@@ -1,0 +1,274 @@
+# Ofertare B2B — Faza 0.
+#
+# Rețele:
+#   internal  internal:true — fără ieșire la internet. Date, LLM-uri, backend.
+#   egress    acces internet — DOAR SearXNG și Playwright MCP.
+#   edge      doar proxy-ul UI, publicat pe 127.0.0.1 (o rețea internal nu poate publica porturi).
+#
+# research-gateway e SINGURUL serviciu din internal + egress: orice cerere spre web
+# (Gemini, SearXNG, Playwright) trece prin egress_guard.py acolo. Backend-ul nu are
+# rută spre internet și nu deține cheia Gemini.
+#
+# Buget RAM (WSL2 ~13 GB din 16): colibri 8g + laya 1g + qdrant 1g + postgres 512m
+# + backend 3g (BGE-M3 fp32 ~2.3 GB) — validat de tests/test_memory_16gb.py.
+# Docling (ingest) rulează la cerere, NU permanent: `docker compose run --rm ingest ...`.
+#
+# Modelele (BGE-M3, Docling) se descarcă O DATĂ cu profilul setup, singurul container
+# cu internet care atinge ./data — și doar cache-ul de modele publice, nimic intern:
+#   docker compose --profile setup run --rm model-fetch
+
+name: ofertare
+
+networks:
+  internal:
+    internal: true
+  egress:
+  edge:
+
+volumes:
+  pgdata:
+  qdrant:
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    networks: [internal]
+    environment:
+      POSTGRES_DB: ofertare
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db:/docker-entrypoint-initdb.d:ro  # schema, doar pe volum gol
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d ofertare"]
+      interval: 10s
+      retries: 5
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    networks: [internal]
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?}
+      QDRANT__TELEMETRY_DISABLED: "true"
+    volumes:
+      - qdrant:/qdrant/storage
+    mem_limit: 1g
+    restart: unless-stopped
+
+  # Creierul intern: Qwen3.6-35B-A3B, experții MoE citiți de pe SSD la cerere.
+  # MODEL_DIR trebuie să fie pe ext4 în WSL2 (ex. \\wsl$\...), NU pe NTFS montat:
+  # streamingul experților e limitat de latența discului.
+  colibri:
+    build: ./colibri
+    image: ofertare-colibri
+    networks: [internal]
+    command: [serve, --model, /model, --host, 0.0.0.0, --port, "5000",
+              --model-id, qwen36, --ram, "${COLI_RAM:-7}", --allowed-host, colibri]
+    environment:
+      # Bind non-loopback e intenționat: rețeaua e internal:true și portul nu e publicat.
+      COLI_ALLOW_INSECURE_BIND: "1"
+    volumes:
+      - ${COLIBRI_MODEL_DIR:?}:/model:ro
+    mem_limit: 8g
+    shm_size: 1g
+    restart: unless-stopped
+
+  # Laya: clasificator de decizie (ModernBERT), servit pe POST /v1/systemone.
+  # Răspunde doar cu probabilități peste Da/Nu — nu generează text.
+  laya:
+    build: ./colibri       # aceeași imagine ca serviciul colibri (construită o dată, din cache)
+    image: ofertare-colibri
+    networks: [internal]
+    command: [serve, --model, /model, --host, 0.0.0.0, --port, "5000",
+              --model-id, laya, --allowed-host, laya]
+    environment:
+      COLI_ALLOW_INSECURE_BIND: "1"
+    volumes:
+      - ${LAYA_MODEL_DIR:?}:/model:ro
+    mem_limit: 1g
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    image: ofertare-backend
+    networks: [internal]
+    environment: &backend-env
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ofertare
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      COLIBRI_URL: http://colibri:5000/v1
+      LAYA_URL: http://laya:5000/v1/systemone
+      RESEARCH_GATEWAY_URL: http://research-gateway:8000
+      HF_HUB_OFFLINE: "1"                       # fără descărcări: rețeaua e internă oricum
+      COMPANY_NAME: ${COMPANY_NAME:-}
+      COMPANY_CIF: ${COMPANY_CIF:-}
+      COMPANY_REGCOM: ${COMPANY_REGCOM:-}
+      COMPANY_ADDRESS: ${COMPANY_ADDRESS:-}
+      COMPANY_CITY: ${COMPANY_CITY:-}
+      COMPANY_COUNTY: ${COMPANY_COUNTY:-}
+      COMPANY_IBAN: ${COMPANY_IBAN:-}
+      COMPANY_BANK: ${COMPANY_BANK:-}
+      DOCLING_ARTIFACTS_PATH: /models/docling
+    volumes: &backend-volumes
+      - ./data/inbox:/data/inbox
+      - ./data/hf-cache:/root/.cache/huggingface:ro
+      - ./data/docling-models:/models/docling:ro
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000"]
+    mem_limit: 3g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      retries: 5
+    depends_on:
+      postgres: { condition: service_healthy }
+      qdrant: { condition: service_started }
+      colibri: { condition: service_started }
+    restart: unless-stopped
+
+  # Docling (layout + TableFormer) la cerere. Pe 16 GB: rulează-l cu colibri oprit
+  # sau acceptă swap. Ex.:
+  #   docker compose run --rm ingest python -m app.ingest.pdf /data/inbox/FT.pdf \
+  #       --supplier "Furnizor SRL" --manufacturer "Producator" --doc-type "Fișă tehnică"
+  ingest:
+    build: ./backend
+    image: ofertare-backend
+    profiles: [ingest]
+    networks: [internal]
+    environment: *backend-env
+    volumes: *backend-volumes
+    mem_limit: 5g
+    depends_on: [qdrant, postgres]
+
+  # Ingestie automată: data/inbox/invoices -> Postgres, data/inbox/tech -> Docling + Qdrant.
+  # Watcher-ul e ușor; Docling rulează ca subproces per PDF și eliberează memoria după.
+  # Limita de 5g acoperă vârful Docling — pe 16 GB, un PDF procesat în timp ce Colibri
+  # generează poate intra în swap (lent, dar nu pică).
+  ingest-watch:
+    build: ./backend
+    image: ofertare-backend
+    networks: [internal]
+    command: [python, -m, app.ingest.watch]
+    environment:
+      <<: *backend-env
+      INBOX_DIR: /data/inbox
+      INGEST_POLL_SECONDS: "30"
+    volumes:
+      - ./data/inbox:/data/inbox             # rw: mută în processed/ și failed/
+      - ./data/hf-cache:/root/.cache/huggingface:ro
+      - ./data/docling-models:/models/docling:ro
+    mem_limit: 5g
+    depends_on:
+      postgres: { condition: service_healthy }
+      qdrant: { condition: service_started }
+    restart: unless-stopped
+
+  # Descarcă modelele publice o singură dată. Nu montează nimic intern în afară de
+  # directoarele de cache, nu are acces la rețeaua internă.
+  model-fetch:
+    build: ./backend
+    image: ofertare-backend
+    profiles: [setup]
+    networks: [egress]
+    command: [sh, -c, "huggingface-cli download BAAI/bge-m3 && docling-tools models download -o /models/docling"]
+    volumes:
+      - ./data/hf-cache:/root/.cache/huggingface
+      - ./data/docling-models:/models/docling
+
+  # Singurul pod spre internet. Primește doar interogări, aplică egress_guard,
+  # întoarce HTML/JSON brut. Nu are acces la Postgres/Qdrant (fără credențiale).
+  research-gateway:
+    build: ./research_gateway
+    networks: [internal, egress]
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}  # opțional până la integrarea Gemini
+      SEARXNG_URL: http://searxng:8080
+      PLAYWRIGHT_MCP_URL: http://playwright-mcp:8931/mcp
+      LAYA_URL: http://laya:5000/v1/systemone
+      LAYA_THRESHOLD: "0.9"
+      DENYLIST_PATH: /config/denylist.yaml
+    volumes:
+      - ./config/denylist.yaml:/config/denylist.yaml:ro
+    mem_limit: 256m
+    restart: unless-stopped
+
+  searxng:
+    image: searxng/searxng:latest
+    networks: [egress]
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?}
+    volumes:
+      - ./infra/searxng:/etc/searxng  # rw: imaginea scrie uwsgi.ini la pornire
+    mem_limit: 256m
+    restart: unless-stopped
+
+  playwright-mcp:
+    image: mcr.microsoft.com/playwright/mcp:latest
+    networks: [egress]
+    entrypoint: [node, /app/cli.js]
+    # --allowed-hosts: protecția DNS-rebinding acceptă doar Host-ul folosit de gateway.
+    command: [--headless, --browser, chromium, --no-sandbox, --isolated,
+              --host, 0.0.0.0, --port, "8931", --allowed-hosts, "playwright-mcp:8931"]
+    mem_limit: 1g
+    restart: unless-stopped
+
+  # --- Triaj e-mail: DOUĂ servicii, fiecare pe O SINGURĂ rețea --------------------------
+  # Atașamentele vin de la oricine; un serviciu cu internet + rețea internă ar fi al doilea
+  # pod spre exterior (pe lângă research-gateway), exact pe calea datelor nesigure.
+  # Singura legătură între cele două e directorul de carantină de pe disc.
+  # Pornire: docker compose --profile mail up -d
+  mail-fetch:
+    build: ./mail_router
+    image: ofertare-mail
+    profiles: [mail]
+    networks: [egress]                       # doar IMAP; nimic intern
+    command: [python, -m, mail_router.fetch]
+    environment:
+      # :- nu :? — Compose interpolează tot fișierul, și profilurile inactive; verificarea
+      # variabilelor obligatorii o face mail_router.fetch la pornire.
+      IMAP_HOST: ${IMAP_HOST:-}
+      IMAP_PORT: ${IMAP_PORT:-993}
+      IMAP_USER: ${IMAP_USER:-}
+      IMAP_PASSWORD: ${IMAP_PASSWORD:-}
+      IMAP_FOLDER: ${IMAP_FOLDER:-INBOX}
+      IMAP_POLL_SECONDS: ${IMAP_POLL_SECONDS:-120}
+      IMAP_ALLOWED_SENDER_DOMAINS: ${IMAP_ALLOWED_SENDER_DOMAINS:-}
+      MAIL_QUARANTINE: /quarantine
+    volumes:
+      - ./data/mail-quarantine:/quarantine   # SINGURUL volum: nu vede data/inbox
+    mem_limit: 128m
+    restart: unless-stopped
+
+  mail-classify:
+    build: ./mail_router
+    image: ofertare-mail
+    profiles: [mail]
+    networks: [internal]                     # Laya; fără internet
+    command: [python, -m, mail_router.classify]
+    environment:
+      LAYA_URL: http://laya:5000/v1/systemone
+      LAYA_MIN_CONFIDENCE: "0.7"
+      MAIL_QUARANTINE: /quarantine
+      MAIL_INBOX: /data/inbox
+    volumes:
+      - ./data/mail-quarantine:/quarantine
+      - ./data/inbox:/data/inbox
+    mem_limit: 256m
+    depends_on: [laya]
+    restart: unless-stopped
+
+  # Singurul port publicat (doar 127.0.0.1). Proxy /api -> backend; backend-ul rămâne
+  # exclusiv pe rețeaua internă. Build-ul React se va servi tot de aici.
+  frontend:
+    profiles: [ui]
+    build: ./frontend
+    volumes:
+      - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [edge, internal]
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      backend: { condition: service_healthy }
+    restart: unless-stopped

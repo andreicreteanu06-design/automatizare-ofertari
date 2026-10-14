@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+test-results
+playwright-report
+legacy
+tests
+.git
+.env
+.env.*
+*.log

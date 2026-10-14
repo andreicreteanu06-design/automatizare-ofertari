@@ -1,0 +1,70 @@
+# --- Secrete: NICIODATĂ în repo ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+config/denylist.yaml
+# denylist.yaml conține chiar numele clientului/proiectelor: rămâne local.
+# În repo stă doar config/denylist.example.yaml.
+
+# --- Date de business: facturi, oferte, documente de test ---
+data/
+*.xml
+!**/fixtures/synthetic/*.xml
+!**/fixtures/public/*.xml
+*.pdf
+*.docx
+!backend/app/quoting/templates/*.docx
+*.xlsx
+*.xls
+*.msg
+*.eml
+output/
+exports/
+
+# --- Baze de date și indexuri locale ---
+pgdata/
+qdrant_storage/
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql.gz
+
+# --- Modele LLM / embeddings (zeci de GB) ---
+models/
+*.gguf
+*.safetensors
+*.bin
+hf-cache/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# --- Node / React ---
+node_modules/
+frontend/dist/
+frontend/build/
+frontend/test-results/
+frontend/playwright-report/
+*.log
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

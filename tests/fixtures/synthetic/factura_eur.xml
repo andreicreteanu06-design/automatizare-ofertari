@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Factură SINTETICĂ (date fictive), structură RO CIUS / UBL 2.1. -->
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:efactura.mfinante.ro:CIUS-RO:1.0.1</cbc:CustomizationID>
+  <cbc:ID>FDX-2026-0147</cbc:ID>
+  <cbc:IssueDate>2026-09-15</cbc:IssueDate>
+  <cbc:DueDate>2026-10-15</cbc:DueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+  <cbc:TaxCurrencyCode>RON</cbc:TaxCurrencyCode>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cac:PartyName><cbc:Name>Feroparts</cbc:Name></cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>Str. Fictiva 1</cbc:StreetName>
+        <cbc:CityName>Sector 1</cbc:CityName>
+        <cbc:CountrySubentity>RO-B</cbc:CountrySubentity>
+        <cac:Country><cbc:IdentificationCode>RO</cbc:IdentificationCode></cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>RO 12345678</cbc:CompanyID>
+        <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>FEROPARTS DISTRIBUTIE SRL</cbc:RegistrationName>
+        <cbc:CompanyID>J40/1/2020</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <cac:PartyLegalEntity><cbc:RegistrationName>CUMPARATOR TEST SRL</cbc:RegistrationName></cac:PartyLegalEntity>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+  <cac:AllowanceCharge>
+    <cbc:ChargeIndicator>false</cbc:ChargeIndicator>
+    <cbc:AllowanceChargeReason>Discount comanda</cbc:AllowanceChargeReason>
+    <cbc:Amount currencyID="EUR">50.00</cbc:Amount>
+  </cac:AllowanceCharge>
+  <cac:AllowanceCharge>
+    <cbc:ChargeIndicator>true</cbc:ChargeIndicator>
+    <cbc:AllowanceChargeReason>Ambalare</cbc:AllowanceChargeReason>
+    <cbc:Amount currencyID="EUR">20.00</cbc:Amount>
+  </cac:AllowanceCharge>
+  <cac:TaxTotal>
+    <cbc:TaxAmount currencyID="RON">2389.62</cbc:TaxAmount>
+  </cac:TaxTotal>
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="EUR">2546.00</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="EUR">2516.00</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="EUR">2994.04</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="EUR">2994.04</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="H87">4</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">2196.00</cbc:LineExtensionAmount>
+    <cac:AllowanceCharge>
+      <cbc:ChargeIndicator>false</cbc:ChargeIndicator>
+      <cbc:Amount currencyID="EUR">24.00</cbc:Amount>
+    </cac:AllowanceCharge>
+    <cac:Item>
+      <cbc:Description>Suport cadru boghiu, otel S355</cbc:Description>
+      <cbc:Name>Suport boghiu</cbc:Name>
+      <cac:BuyersItemIdentification><cbc:ID>INT-00042</cbc:ID></cac:BuyersItemIdentification>
+      <cac:SellersItemIdentification><cbc:ID>3EST-000-123</cbc:ID></cac:SellersItemIdentification>
+      <cac:StandardItemIdentification><cbc:ID schemeID="0160">5901234123457</cbc:ID></cac:StandardItemIdentification>
+      <cac:CommodityClassification><cbc:ItemClassificationCode listID="STI">34631000-9</cbc:ItemClassificationCode></cac:CommodityClassification>
+      <cac:CommodityClassification><cbc:ItemClassificationCode listID="HS">86079910</cbc:ItemClassificationCode></cac:CommodityClassification>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>S</cbc:ID><cbc:Percent>19</cbc:Percent>
+        <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+    </cac:Item>
+    <cac:Price><cbc:PriceAmount currencyID="EUR">555.00</cbc:PriceAmount></cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>2</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="H87">250</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">350.00</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Name>Surub M12x40 cl. 10.9</cbc:Name>
+      <cac:SellersItemIdentification><cbc:ID>DIN933-M12X40</cbc:ID></cac:SellersItemIdentification>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>S</cbc:ID><cbc:Percent>19</cbc:Percent>
+        <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">140.00</cbc:PriceAmount>
+      <cbc:BaseQuantity unitCode="H87">100</cbc:BaseQuantity>
+    </cac:Price>
+  </cac:InvoiceLine>
+</Invoice>

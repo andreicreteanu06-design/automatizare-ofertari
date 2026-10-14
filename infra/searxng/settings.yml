@@ -1,0 +1,7 @@
+# secret_key vine din SEARXNG_SECRET. research-gateway are nevoie de format JSON.
+use_default_settings: true
+search:
+  formats: [html, json]
+server:
+  limiter: false
+  image_proxy: false

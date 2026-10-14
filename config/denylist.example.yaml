@@ -1,0 +1,7 @@
+# Copiază în config/denylist.yaml (ignorat de git) și completează.
+# Orice potrivire blochează cererea spre internet — fără excepții, fără LLM.
+terms:            # case-insensitive, potrivire pe cuvânt întreg
+  - "<NUME_CLIENT>"
+  - "<NUME_PROIECT>"
+patterns:         # regex Python
+  - '(?i)\bpre[țt](ul|uri|urile)?\s+(de\s+)?achizi[țt]i[ea]\b'

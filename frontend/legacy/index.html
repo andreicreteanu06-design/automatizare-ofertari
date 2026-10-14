@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ofertare</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <h1>Ofertare</h1>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="chat" role="tab">Chat tehnic</button>
+    <button class="tab" data-tab="offer" role="tab">Generator oferte</button>
+    <button class="tab" data-tab="email" role="tab">E-mail furnizori</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ================= CHAT ================= -->
+  <section id="tab-chat" class="panel">
+    <form id="chat-form" class="card">
+      <label for="chat-q">Întrebare despre specificații, coduri sau prețuri istorice</label>
+      <textarea id="chat-q" rows="3" maxlength="1000" required
+                placeholder="ex. Ce masă are suportul 3EST000123 și cu cât l-am cumpărat ultima dată?"></textarea>
+      <div class="row">
+        <button type="submit" class="primary">Întreabă</button>
+        <span class="status" id="chat-status"></span>
+      </div>
+      <p class="hint">Răspunsurile vin exclusiv din documentele interne. Fiecare afirmație are o citare
+        <span class="cite">[document:pagina]</span>; codurile care nu apar în sursa citată sunt eliminate automat.</p>
+    </form>
+    <div id="chat-log"></div>
+  </section>
+
+  <!-- ================= OFERTĂ ================= -->
+  <section id="tab-offer" class="panel" hidden>
+    <form id="offer-form">
+      <div class="card">
+        <h2>Date ofertă</h2>
+        <div class="grid">
+          <label>Nr. ofertă<input name="offer_number" required maxlength="50"></label>
+          <label>Client<input name="client_name" required maxlength="200"></label>
+          <label>Data<input name="offer_date" type="date" required></label>
+          <label>Valabilitate (zile)<input name="validity_days" type="number" min="1" max="365" value="30" required></label>
+          <label>Adaos peste cost livrat (%)<input name="markup_percent" type="number" min="0" step="0.01" value="20" required></label>
+          <label>Livrare (Incoterms)<input name="delivery_terms" value="DAP" maxlength="100"></label>
+        </div>
+        <h2 class="sub">Pentru exportul Saga (Ieșiri)</h2>
+        <div class="grid">
+          <label>CUI client<input name="client_cif" maxlength="20" placeholder="RO12345678"></label>
+          <label>Nr. document în Saga<input name="document_number" maxlength="30" placeholder="serie + număr"></label>
+          <label>Cotă TVA %<input name="vat_percent" type="number" min="0" max="100" step="any" value="21"></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Articole</h2>
+        <div class="table-wrap">
+          <table class="edit">
+            <thead><tr>
+              <th>Cod</th><th></th><th>Descriere</th><th>Furnizor</th><th>Producător</th><th>Cant.</th>
+              <th>Preț achiziție</th><th>Monedă</th><th>Transport linie</th><th>Monedă tr.</th>
+              <th>Taxă vamală %</th><th>Import</th><th>Nr. agrement AFER</th><th></th>
+            </tr></thead>
+            <tbody id="lines"></tbody>
+          </table>
+        </div>
+        <button type="button" id="add-line">+ Articol</button>
+        <p class="hint">↺ completează prețul, moneda și furnizorul din ultima factură e-Factura pentru cod.</p>
+      </div>
+
+      <div class="card">
+        <h2>Certificări furnizori</h2>
+        <table class="edit">
+          <thead><tr><th>Furnizor</th><th>Standard</th><th>Nr. certificat</th><th>Valabil până la</th><th></th></tr></thead>
+          <tbody id="certs"></tbody>
+        </table>
+        <button type="button" id="add-cert">+ Certificat</button>
+      </div>
+
+      <div class="card checklist">
+        <h2>Checklist de conformitate <span class="badge" id="chk-badge">necalculat</span></h2>
+        <p class="hint">Descărcarea Word/Excel e blocată până când toate cerințele sunt îndeplinite.</p>
+        <ul id="chk-list">
+          <li data-req="afer"><span class="mark"></span>Agrement tehnic AFER pentru fiecare produs din import <em>(coloana AFER din articole)</em></li>
+          <li data-req="iso"><span class="mark"></span>Certificat ISO/TS 22163 sau ISO 9001 valabil pentru fiecare furnizor <em>(secțiunea de mai sus)</em></li>
+          <li data-req="spare"><span class="mark"></span>
+            <label class="inline"><input type="checkbox" name="spare_parts_ok"> Piese de schimb disponibile minimum 30 de ani</label>
+            <input name="spare_parts_reference" placeholder="Referința confirmării (ex. scrisoare furnizor nr./dată)" maxlength="200">
+          </li>
+          <li data-req="penalty"><span class="mark"></span>
+            <label class="inline"><input type="checkbox" name="include_penalty_clause"> Clauză penalități: 5% / săptămână de întârziere, maximum 30%</label>
+          </li>
+          <li data-req="eur"><span class="mark"></span>
+            <label class="inline"><input type="checkbox" name="firm_prices"> Prețuri ferme, exprimate exclusiv în EUR</label>
+          </li>
+        </ul>
+        <ul id="chk-failures" class="failures"></ul>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <button type="submit" class="primary">Calculează oferta</button>
+          <button type="button" id="dl-docx" disabled>Descarcă oferta (Word)</button>
+          <button type="button" id="dl-xlsx" disabled>Descarcă calcul intern (Excel)</button>
+          <button type="button" id="dl-saga" disabled>Export Saga (XML)</button>
+          <span class="status" id="offer-status"></span>
+        </div>
+        <div id="offer-result"></div>
+      </div>
+    </form>
+  </section>
+
+  <!-- ================= E-MAIL ================= -->
+  <section id="tab-email" class="panel" hidden>
+    <form id="email-form">
+      <div class="card">
+        <h2>Draft e-mail către furnizor</h2>
+        <div class="grid">
+          <label>Tip<select name="kind">
+            <option value="rfq">Cerere de ofertă</option>
+            <option value="clarification">Clarificări tehnice</option>
+          </select></label>
+          <label>Limba<select name="language">
+            <option value="ro">Română</option><option value="en">Engleză</option><option value="de">Germană</option>
+            <option value="fr">Franceză</option><option value="it">Italiană</option><option value="es">Spaniolă</option>
+            <option value="pl">Poloneză</option><option value="cs">Cehă</option><option value="hu">Maghiară</option>
+            <option value="tr">Turcă</option>
+          </select></label>
+          <label>Persoană de contact<input name="contact_name" maxlength="100"></label>
+          <label>Răspuns până la<input name="reply_by" type="date"></label>
+          <label>Semnătură – nume<input name="sender_name" required maxlength="100"></label>
+          <label>Semnătură – firmă<input name="sender_company" required maxlength="200"></label>
+        </div>
+        <p class="hint">Fără numele clientului final: e-mailul trece prin Egress Guard și e blocat dacă îl conține.</p>
+      </div>
+      <div class="card">
+        <h2>Articole</h2>
+        <table class="edit">
+          <thead><tr><th>Cod</th><th>Descriere</th><th>Cant.</th><th>UM</th><th></th></tr></thead>
+          <tbody id="email-items"></tbody>
+        </table>
+        <div class="row">
+          <button type="button" id="add-email-item">+ Articol</button>
+          <button type="button" id="copy-from-offer">Copiază articolele din ofertă</button>
+        </div>
+        <label id="questions-wrap" hidden>Întrebări (una pe rând)
+          <textarea name="questions" rows="4"></textarea></label>
+      </div>
+      <div class="card">
+        <div class="row">
+          <button type="submit" class="primary">Generează draft</button>
+          <span class="status" id="email-status"></span>
+        </div>
+        <div id="email-result" hidden>
+          <label>Subiect<input id="email-subject" readonly></label>
+          <label>Corp<textarea id="email-body" rows="16" readonly></textarea></label>
+          <button type="button" id="copy-email">Copiază subiect + corp</button>
+        </div>
+      </div>
+    </form>
+  </section>
+</main>
+</body>
+</html>

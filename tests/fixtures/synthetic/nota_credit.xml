@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notă de credit SINTETICĂ (date fictive). -->
+<CreditNote xmlns="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
+            xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+            xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:ID>NC-2026-0003</cbc:ID>
+  <cbc:IssueDate>2026-09-20</cbc:IssueDate>
+  <cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>
+  <cbc:DocumentCurrencyCode>RON</cbc:DocumentCurrencyCode>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cac:PartyName><cbc:Name>Feroparts</cbc:Name></cac:PartyName>
+      <cac:PartyLegalEntity><cbc:CompanyID>12345678</cbc:CompanyID></cac:PartyLegalEntity>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:LegalMonetaryTotal>
+    <cbc:PayableAmount currencyID="RON">119.00</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+  <cac:CreditNoteLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:CreditedQuantity unitCode="H87">1</cbc:CreditedQuantity>
+    <cbc:LineExtensionAmount currencyID="RON">100.00</cbc:LineExtensionAmount>
+    <cac:Item><cbc:Name>Retur suport</cbc:Name></cac:Item>
+    <cac:Price><cbc:PriceAmount currencyID="RON">100.00</cbc:PriceAmount></cac:Price>
+  </cac:CreditNoteLine>
+</CreditNote>
