@@ -80,6 +80,8 @@ Instalarea este destinată unei infrastructuri controlate de client, cu Docker �
 
 ## 📚 Documentație suplimentară
 
+- [TECHNICAL_INTEGRATIONS.md](TECHNICAL_INTEGRATIONS.md) — Pint, reranking local opțional și proveniența structurală Docling.
+
 - [SOURCE_QUALITY.md](SOURCE_QUALITY.md) — Confirmarea valorilor, detectarea paginilor blocate și inventarul local al furnizorilor.
 
 - [API_DOCS.md](API_DOCS.md) — Structura completă a API-ului de backend, modele de date, exporturi și coduri de eroare.

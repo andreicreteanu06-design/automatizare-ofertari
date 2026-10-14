@@ -104,6 +104,8 @@ services:
       RESEARCH_GATEWAY_URL: http://research-gateway:8000
       COOKIE_SECURE: ${COOKIE_SECURE:-false}  # true când UI-ul este servit prin HTTPS
       HF_HUB_OFFLINE: "1"                       # fără descărcări: rețeaua e internă oricum
+      RERANK_ENABLED: ${RERANK_ENABLED:-false}
+      RERANK_MODEL_PATH: /models/reranker
       COMPANY_NAME: ${COMPANY_NAME:-}
       COMPANY_CIF: ${COMPANY_CIF:-}
       COMPANY_REGCOM: ${COMPANY_REGCOM:-}
@@ -117,8 +119,9 @@ services:
       - ./data/inbox:/data/inbox
       - ./data/hf-cache:/root/.cache/huggingface:ro
       - ./data/docling-models:/models/docling:ro
+      - ./data/reranker:/models/reranker:ro
     command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000"]
-    mem_limit: 3g
+    mem_limit: ${BACKEND_MEMORY_LIMIT:-3g}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 15s
@@ -177,6 +180,16 @@ services:
     volumes:
       - ./data/hf-cache:/root/.cache/huggingface
       - ./data/docling-models:/models/docling
+
+  # Opțional: descarcă reranker-ul separat, fără a monta documentele clientului.
+  reranker-fetch:
+    build: ./backend
+    image: ofertare-backend
+    profiles: [setup]
+    networks: [egress]
+    command: [python, -c, "from huggingface_hub import snapshot_download; snapshot_download('BAAI/bge-reranker-v2-m3', local_dir='/models/reranker', ignore_patterns=['*.onnx', '*.onnx_data', '*.msgpack', '*.h5'])"]
+    volumes:
+      - ./data/reranker:/models/reranker
 
   # Singurul pod spre internet. Primește doar interogări, aplică egress_guard,
   # întoarce HTML/JSON brut. Nu are acces la Postgres/Qdrant (fără credențiale).

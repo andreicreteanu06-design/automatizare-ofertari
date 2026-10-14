@@ -57,7 +57,7 @@ def invoice_fragments(rows):
 def build_fragments(retrieval, max_chars=MAX_CONTEXT_CHARS):
     """Faptele din facturi întâi, apoi chunk-urile Qdrant, până la bugetul de context."""
     chunks = [{"doc_id": c["doc_id"], "page": c["page"], "page_end": c.get("page_end", c["page"]),
-               "supplier": c.get("supplier"), "doc_type": c.get("doc_type"), "source_revision": c.get("source_revision"), "text": c["text"]}
+               "supplier": c.get("supplier"), "doc_type": c.get("doc_type"), "source_revision": c.get("source_revision"), "text": c["text"], 'provenance': c.get('provenance', [])}
               for c in retrieval.context]
     out, used = [], 0
     for f in invoice_fragments(retrieval.exact) + chunks:

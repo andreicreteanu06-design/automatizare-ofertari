@@ -175,6 +175,22 @@ def test_empty_document():
     assert chunk_document(new_doc(), META) == []
 
 
+def test_docling_geometry_and_cells_survive_page_merge():
+    doc = new_doc()
+    add_table(doc, [['Cod', 'Masa'], ['PART123', '12 kg']], 1)
+    add_table(doc, [['Cod', 'Masa'], ['OTHER999', '120 kg']], 2)
+    (chunk,) = chunk_document(doc, META)
+    assert len(chunk.provenance) == 2
+    assert [p['locations'][0]['page_no'] for p in chunk.provenance] == [1, 2]
+    assert chunk.provenance[0]['locations'][0]['bbox']['l'] == 0
+    assert chunk.provenance[1]['cells'][-1]['text'] == '120 kg'
+    from app.rag.evidence import source_units
+    (unit,) = source_units([{'doc_id': chunk.doc_id, 'page': 1, 'page_end': 2,
+                             'text': chunk.text, 'provenance': chunk.provenance}], 'masa PART123?')
+    assert [c['text'] for c in unit['provenance'][0]['cells']] == ['PART123', '12 kg']
+    assert unit['provenance'][1]['cells'] == []
+
+
 @pytest.mark.parametrize("path,expected", [
     ("data/FT Suport boghiu (rev.2).pdf", "FT-Suport-boghiu-rev-2"),
     ("x/ăîș.pdf", "doc"),

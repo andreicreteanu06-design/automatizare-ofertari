@@ -174,6 +174,27 @@ def test_code_not_in_postgres_still_returns_context(qdrant):
     assert r.exact == [] and r.context[0]["page"] == 3
 
 
+def test_optional_rerank_enlarges_pool_without_touching_invoice_rows(qdrant, monkeypatch):
+    import app.rag.rerank as module
+    monkeypatch.setenv('RERANK_ENABLED', 'true')
+    seen = []
+    def fake(query, candidates, k):
+        seen.extend(candidates)
+        return candidates[-k:], 'applied'
+    monkeypatch.setattr(module, 'rerank', fake)
+    r = retrieve('3EST000123', conn=FakeConn([ROW]), qdrant=qdrant, embedder=FakeEmbedder(), k=1)
+    assert len(seen) == 3 and len(r.context) == 1
+    assert r.exact == [ROW] and r.rerank_status == 'applied'
+
+
+def test_geometry_survives_qdrant_payload(qdrant):
+    provenance = ({'ref': '#/texts/1', 'locations': [{'page_no': 2, 'bbox': {'l': 1, 't': 2, 'r': 3, 'b': 4}}]},)
+    c = Chunk(META_A.doc_id, 0, 'text', 2, 2, None, 'geometry support', provenance)
+    index_chunks(qdrant, FakeEmbedder(), [c], META_A)
+    result = vector_search(qdrant, FakeEmbedder(), 'geometry support', k=1)
+    assert result[0]['provenance'] == list(provenance)
+
+
 # --- SQL real: rulează doar cu TEST_DATABASE_URL ------------------------------------
 
 @pytest.fixture

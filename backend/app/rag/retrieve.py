@@ -56,11 +56,17 @@ class Retrieval:
     codes: list[str]
     exact: list[dict]      # rânduri price_history — fapte, prioritare
     context: list[dict]    # chunk-uri Qdrant, fiecare cu "cite": "[doc_id:pagina]"
+    rerank_status: str = 'disabled'
 
 
 def retrieve(query, *, conn, qdrant, embedder, k=5):
     codes = code_candidates(query)
     exact = exact_lookup(conn, codes)                                   # 1. exact-code path
     names = list(dict.fromkeys(r["name"] for r in exact if r.get("name")))[:3]
-    context = vector_search(qdrant, embedder, " ".join([query, *names]), k)  # 2. context
-    return Retrieval(codes, exact, context)
+    from app.rag.rerank import enabled, rerank
+    use_rerank = enabled()
+    context = vector_search(qdrant, embedder, " ".join([query, *names]), min(30, k * 3) if use_rerank else k)
+    status = 'disabled'
+    if use_rerank:
+        context, status = rerank(query, context, k)
+    return Retrieval(codes, exact, context, status)

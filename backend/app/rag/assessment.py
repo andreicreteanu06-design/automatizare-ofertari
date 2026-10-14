@@ -1,6 +1,7 @@
 """Evidence confidence is separate from verbatim extraction and page access."""
 import hashlib
 import re
+from app.rag.quantities import parse_quantity, comparison_key, scalar_from_prose
 
 
 def assess(units, conflicts, query=''):
@@ -19,22 +20,22 @@ def assess(units, conflicts, query=''):
         for prop in u['properties']:
             value = next((v for k, v in fields.items() if any(a == k or k.startswith(a + ' ') for a in ALIASES[prop])), None)
             if value is None:
-                match = re.search(r'\b(?:' + '|'.join(ALIASES[prop]) + r')\b\s*(?:(?:este|is|de|of)\s*)*[:=]?\s*([-+]?\d+(?:[.,]\d+)?\s*(?:kg|g|mm|cm|m|bar|mpa|pa|°c|eur|ron|usd))\b', normalized(u['quote']))
-                value = match[1] if match else None
+                value = scalar_from_prose(u['quote'], ALIASES[prop])
             if value is None:
                 continue
             measure = re.fullmatch(r'\s*([-+]?\d+(?:[.,]\d+)?)\s*(kg|g|mm|cm|m|bar|mpa|pa|°c|eur|ron|usd)\s*', value, re.I)
             reasons = []
+            canonical = parse_quantity(value, prop)
             if not product_code or product_code.upper() not in u['codes']:
                 reasons.append('exact_product_code_unconfirmed')
             if not identity['codes'] or not all(identity[k] for k in ('manufacturer', 'variant', 'revision')):
                 reasons.append('incomplete_product_identity')
-            if prop != 'material' and not measure:
+            if (prop not in ('material', 'pret') and not canonical) or (prop == 'pret' and not measure):
                 reasons.append('missing_or_ambiguous_unit')
             dimensions = {'masa': {'kg', 'g'}, 'lungime': {'m', 'cm', 'mm'}, 'latime': {'m', 'cm', 'mm'},
                           'inaltime': {'m', 'cm', 'mm'}, 'diametru': {'m', 'cm', 'mm'},
                           'presiune': {'bar', 'mpa', 'pa'}, 'temperatura': {'°c'}, 'pret': {'eur', 'ron', 'usd'}}
-            if measure and measure[2].lower() not in dimensions.get(prop, set()):
+            if measure and not canonical and measure[2].lower() not in dimensions.get(prop, set()):
                 reasons.append('unit_dimension_mismatch')
             if not conditions:
                 reasons.append('measurement_conditions_missing')
@@ -46,7 +47,8 @@ def assess(units, conflicts, query=''):
             if trusted and normalized(identity['manufacturer'] or '') != normalized(u.get('manufacturer') or ''):
                 reasons.append('manufacturer_mismatch')
             claims.append({'evidence_id': u['id'], 'identity': identity, 'property': prop,
-                           'value': value, 'unit': measure[2] if measure else None, 'conditions': conditions,
+                           'value': value, 'unit': canonical['original_unit'] if canonical else measure[2] if measure else None,
+                           'normalized_quantity': canonical, 'conditions': conditions,
                            'quote': u['quote'], 'url': u.get('url'), 'doc_id': u['doc_id'],
                            'retrieved_at': u.get('retrieved_at'), 'document_revision': identity['revision'],
                            'source_role': u.get('source_role', 'internal_unreviewed'),
@@ -61,7 +63,7 @@ def assess(units, conflicts, query=''):
         if claim['reasons']:
             continue
         peers = [c for c in claims if not c['reasons'] and c['identity'] == claim['identity']
-                 and c['property'] == claim['property'] and c['value'] == claim['value']
+                 and c['property'] == claim['property'] and comparison_key(c['value'], c['property']) == comparison_key(claim['value'], claim['property'])
                  and c['conditions'] == claim['conditions']]
         independent = len({c['publisher_group'] for c in peers}) > 1 and len({c['content_fingerprint'] for c in peers}) > 1
         if claim['source_role'] == 'manufacturer' or independent:

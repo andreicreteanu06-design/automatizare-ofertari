@@ -40,6 +40,15 @@ class Chunk:
     page_end: int
     section: str | None
     text: str              # cu antet: exact ce se embed-uiește și ce primește LLM-ul
+    provenance: tuple = ()
+
+
+def item_provenance(item):
+    result = {'ref': item.self_ref, 'label': str(item.label),
+              'locations': [p.model_dump(mode='json') for p in item.prov]}
+    if isinstance(item, TableItem):
+        result['cells'] = [cell.model_dump(mode='json') for cell in item.data.table_cells]
+    return result
 
 
 def _field(value):
@@ -84,9 +93,10 @@ def chunk_document(doc, meta, max_chars=MAX_CHARS):
                     == _cells(next(x for x in md.splitlines() if x.lstrip().startswith('|')))):
                 prev["body"] = _merge_tables(prev["body"], md)
                 prev["p1"] = max(pages)
+                prev['provenance'].append(item_provenance(item))
                 continue
             blocks.append({"kind": "table", "p0": min(pages), "p1": max(pages), "section": section,
-                           "body": md, "ncols": item.data.num_cols})
+                           "body": md, "ncols": item.data.num_cols, 'provenance': [item_provenance(item)]})
         elif isinstance(item, (SectionHeaderItem, TitleItem)):
             section = item.text.strip() or section
         elif isinstance(item, TextItem) and item.label not in _SKIP_LABELS and item.text.strip():
@@ -95,8 +105,9 @@ def chunk_document(doc, meta, max_chars=MAX_CHARS):
             if (prev and prev["kind"] == "text" and prev["section"] == section and prev["p0"] == page
                     and len(prev["body"]) + 1 + len(text) <= max_chars):
                 prev["body"] += "\n" + text
+                prev['provenance'].append(item_provenance(item))
             else:  # un paragraf mai lung decât max_chars rămâne întreg, într-un chunk propriu
-                blocks.append({"kind": "text", "p0": page, "p1": page, "section": section, "body": text})
+                blocks.append({"kind": "text", "p0": page, "p1": page, "section": section, "body": text, 'provenance': [item_provenance(item)]})
 
     chunks = []
     for i, b in enumerate(blocks):
@@ -104,7 +115,7 @@ def chunk_document(doc, meta, max_chars=MAX_CHARS):
         if b["section"]:
             parts.append(f"## {b['section']}")
         parts.append(b["body"])
-        chunks.append(Chunk(meta.doc_id, i, b["kind"], b["p0"], b["p1"], b["section"], "\n".join(parts)))
+        chunks.append(Chunk(meta.doc_id, i, b["kind"], b["p0"], b["p1"], b["section"], "\n".join(parts), tuple(b['provenance'])))
     return chunks
 
 
