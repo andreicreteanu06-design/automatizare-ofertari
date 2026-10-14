@@ -1,6 +1,6 @@
 # Ofertare B2B — React + Tailwind CSS + Vite
 
-Interfață în română pentru API-ul descris în `../API_DOCS.md`. Cele trei zone păstrează starea în memorie la schimbarea tabului; reîncărcarea paginii o șterge. Nu se salvează prețuri sau mesaje în localStorage.
+Interfață în română pentru API-ul descris în `../API_DOCS.md`. Chat-ul salvează conversațiile în Postgres și le restaurează după reîncărcare printr-un cookie HttpOnly. Ofertele și formularul e-mail păstrează starea doar în memoria paginii. Nu se salvează prețuri sau mesaje în localStorage.
 
 ## Pornire prin Docker (recomandată)
 
@@ -37,7 +37,7 @@ Fișierele compilate sunt incluse în imagine, fără montarea directorului `dis
 
 ## Comportament
 
-- Chat: `/chat`, citări randate ca text React cu document/pagină și metadate, prețuri `exact`, avertismente pentru rezultate neverificate. API-ul primește întrebarea curentă, fără istoric conversațional.
+- Chat: `/chat`, citări randate ca text React cu document/pagină și metadate, prețuri `exact`, avertismente pentru rezultate neverificate. API-ul folosește istoricul conversației pentru referința articolului, recuperează documentele din nou și returnează numai dovezi extractive. Maximum trei încercări; conflictele și lipsa dovezilor sunt afișate explicit. Referințele și notele de revizuire sunt salvate separat, fără a deveni automat fapte.
 - Oferte: toate câmpurile comerciale, costuri, import/AFER, certificate și checklist. Penalitățile sunt fixate la valorile cerute de checklist (5% / săptămână, plafon 30%). Căutarea `/prices` permite alegerea explicită a unei facturi înainte de precompletare. Nu schimbă cantitatea ofertei.
 - Exporturile sunt permise doar pentru un calcul al datelor curente cu `compliance.ok === true`. Datele financiare rămân stringuri; toate calculele sunt efectuate de backend. Saga validează separat datele fiscale. Răspunsurile binare sunt salvate prin Blob, cu numele din Content-Disposition când este disponibil.
 - Draft: toate cele 10 limbi, RFQ/clarificări, articole dinamice, copiere subiect și mesaj. Nu trimite e-mailuri. Nu transmite automat clientul sau alte date din ofertă.
@@ -56,3 +56,8 @@ Testele de browser folosesc răspunsuri API simulate și verifică blocarea expo
 Interfața JavaScript anterioară este păstrată în `legacy/`, împreună cu verificările Python existente pentru aceasta. Nu este inclusă în build-ul React.
 
 Integrarea Tailwind folosește [pluginul oficial pentru Vite](https://tailwindcss.com/docs/installation/using-vite).
+
+
+## Live Web RAG opțional
+
+`POST /chat` acceptă `live_web: bool = false`. Checkbox-ul „🌍 Căutare Live Web (Perplexity)” activează căutarea externă pentru întrebarea curentă, filtrată prin Egress Guard. Istoricul nu este trimis către căutarea web. Citările web folosesc `[https://...]`; răspunsul include `live_web` și `web_research`. Serviciul Camoufox înlocuiește Playwright MCP. Arhitectură, contracte și limite: [Live Web RAG](../LIVE_WEB.md).

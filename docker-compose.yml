@@ -2,11 +2,11 @@
 #
 # Rețele:
 #   internal  internal:true — fără ieșire la internet. Date, LLM-uri, backend.
-#   egress    acces internet — DOAR SearXNG și Playwright MCP.
+#   egress    acces internet — DOAR SearXNG și Camoufox.
 #   edge      doar proxy-ul UI, publicat pe 127.0.0.1 (o rețea internal nu poate publica porturi).
 #
 # research-gateway e SINGURUL serviciu din internal + egress: orice cerere spre web
-# (Gemini, SearXNG, Playwright) trece prin egress_guard.py acolo. Backend-ul nu are
+# (Gemini, SearXNG, Camoufox) trece prin egress_guard.py acolo. Backend-ul nu are
 # rută spre internet și nu deține cheia Gemini.
 #
 # Buget RAM (WSL2 ~13 GB din 16): colibri 8g + laya 1g + qdrant 1g + postgres 512m
@@ -102,6 +102,7 @@ services:
       COLIBRI_URL: http://colibri:5000/v1
       LAYA_URL: http://laya:5000/v1/systemone
       RESEARCH_GATEWAY_URL: http://research-gateway:8000
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}  # true când UI-ul este servit prin HTTPS
       HF_HUB_OFFLINE: "1"                       # fără descărcări: rețeaua e internă oricum
       COMPANY_NAME: ${COMPANY_NAME:-}
       COMPANY_CIF: ${COMPANY_CIF:-}
@@ -185,7 +186,7 @@ services:
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}  # opțional până la integrarea Gemini
       SEARXNG_URL: http://searxng:8080
-      PLAYWRIGHT_MCP_URL: http://playwright-mcp:8931/mcp
+      STEALTH_BROWSER_URL: http://stealth-browser:8000
       LAYA_URL: http://laya:5000/v1/systemone
       LAYA_THRESHOLD: "0.9"
       DENYLIST_PATH: /config/denylist.yaml
@@ -204,14 +205,12 @@ services:
     mem_limit: 256m
     restart: unless-stopped
 
-  playwright-mcp:
-    image: mcr.microsoft.com/playwright/mcp:latest
+  stealth-browser:
+    build: ./stealth_browser
     networks: [egress]
-    entrypoint: [node, /app/cli.js]
-    # --allowed-hosts: protecția DNS-rebinding acceptă doar Host-ul folosit de gateway.
-    command: [--headless, --browser, chromium, --no-sandbox, --isolated,
-              --host, 0.0.0.0, --port, "8931", --allowed-hosts, "playwright-mcp:8931"]
-    mem_limit: 1g
+    environment:
+      GUARD_URL: http://research-gateway:8000/guard/check
+    mem_limit: 1.5g
     restart: unless-stopped
 
   # --- Triaj e-mail: DOUĂ servicii, fiecare pe O SINGURĂ rețea --------------------------

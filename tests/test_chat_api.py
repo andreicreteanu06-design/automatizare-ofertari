@@ -1,4 +1,4 @@
-"""API /chat cu endpoint-ul Colibri mock-uit la nivel HTTP (httpx.MockTransport)."""
+"""Chat strict: only selected source excerpts may reach the response."""
 import json
 from datetime import date
 from decimal import Decimal
@@ -7,119 +7,131 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.llm import SYSTEM_PROMPT, Colibri
+from app.llm import Colibri
 from app.main import app, build_fragments, get_llm, get_retriever
-from app.rag.grounding import NOT_FOUND, REMOVED
+from app.rag.grounding import NOT_FOUND
 from app.rag.retrieve import Retrieval
+from app.rag.evidence import source_units, contradictions, context_query
 
-ROW = {"seller_code": "3EST-000-123", "buyer_code": "INT-00042", "name": "Suport boghiu", "supplier": "FEROPARTS SRL",
-       "invoice_number": "FDX-2026/0147", "issue_date": date(2026, 9, 15), "currency": "EUR",
-       "quantity": Decimal(4), "unit_code": "H87", "unit_price": Decimal("555.000000"),
-       "net_unit_price": Decimal("549.000000"), "hs_code": "86079910", "has_doc_allowance": True}
-CHUNK = {"doc_id": "FT-suport", "page": 3, "page_end": 4, "supplier": "Feroparts SRL", "doc_type": "Fișă tehnică",
-         "kind": "table", "text": "[Furnizor: Feroparts SRL | Producător: Knorr-Bremse | Doc: Fișă tehnică | Pagina 3-4]\n"
-                                  "| Cod | Masa |\n| 3EST000123 | 12 kg |"}
-RETRIEVAL = Retrieval(["3EST000123"], [ROW], [CHUNK])
-
-
-class ColibriMock:
-    def __init__(self, content="", status=200, exc=None):
-        self.content, self.status, self.exc, self.requests = content, status, exc, []
-
-    def __call__(self, request):
-        self.requests.append(request)
-        if self.exc:
-            raise self.exc
-        return httpx.Response(self.status, json={"choices": [{"message": {"role": "assistant", "content": self.content}}]})
+ROW = {'seller_code': '3EST-000-123', 'buyer_code': 'INT-00042', 'name': 'Suport boghiu', 'supplier': 'FEROPARTS',
+       'invoice_number': 'F1', 'issue_date': date(2026, 9, 15), 'currency': 'EUR', 'quantity': Decimal(4),
+       'unit_code': 'H87', 'unit_price': Decimal('555.000000'), 'net_unit_price': Decimal('549.000000'), 'hs_code': '86079910'}
+CHUNK = {'doc_id': 'FT-suport', 'page': 3, 'page_end': 3, 'supplier': 'Feroparts', 'doc_type': 'Fișă tehnică',
+         'source_revision': 'abc123', 'text': '| Cod | Masa | Lungime |\n| --- | --- | --- |\n| 3EST000123 | 12 kg | 120 mm |\n| OTHER999 | 120 kg | 20 mm |'}
+RETRIEVAL = Retrieval(['3EST000123'], [ROW], [CHUNK])
 
 
 @pytest.fixture
 def make_client():
-    def make(colibri, retrieval=RETRIEVAL):
-        calls = []
-        app.dependency_overrides[get_retriever] = lambda: (lambda q, k: calls.append((q, k)) or retrieval)
-        app.dependency_overrides[get_llm] = lambda: Colibri("http://colibri:5000/v1", transport=httpx.MockTransport(colibri))
-        return TestClient(app), calls
+    def make(content=None, retrieval=RETRIEVAL):
+        calls, requests = [], []
+        def mock(request):
+            payload = json.loads(request.content)
+            requests.append(payload)
+            evidence = json.loads(payload['messages'][-1]['content'])['evidence']
+            answer = json.dumps({'evidence_ids': [evidence[0]['id']]}) if content is None else content
+            return httpx.Response(200, json={'choices': [{'message': {'content': answer}}]})
+        app.dependency_overrides[get_retriever] = lambda: lambda q, k: calls.append((q, k)) or retrieval
+        app.dependency_overrides[get_llm] = lambda: Colibri('http://colibri:5000/v1', transport=httpx.MockTransport(mock))
+        return TestClient(app), calls, requests
     yield make
     app.dependency_overrides.clear()
 
 
-def test_chat_end_to_end(make_client):
-    colibri = ColibriMock("Suportul 3EST000123 are 12 kg [FT-suport:3]. Prețul net a fost 549.000000 EUR "
-                          "[FACT-FDX-2026-0147:1]. Înlocuitor: 3EST000999 [FT-suport:3].")
-    client, calls = make_client(colibri)
-    r = client.post("/chat", json={"query": "cât costă 3EST-000-123?", "k": 3})
+def test_exact_mass_and_row_binding(make_client):
+    client, calls, requests = make_client()
+    r = client.post('/chat', json={'query': 'masa 3EST000123?', 'k': 3})
     assert r.status_code == 200
     body = r.json()
-    assert calls == [("cât costă 3EST-000-123?", 3)]
-    assert body["removed_codes"] == ["3EST000999"]
-    assert REMOVED in body["answer"] and "3EST000999" not in body["answer"]
-    assert body["grounded"] is True
-    assert [c["cite"] for c in body["citations"]] == ["[FT-suport:3]", "[FACT-FDX-2026-0147:1]"]
-    assert body["citations"][1]["doc_type"] == "Factură"
-    assert body["exact"][0]["net_unit_price"] == "549.000000"
+    assert body['verification_status'] == 'verified_excerpts'
+    assert 'Masa: 12 kg' in body['answer'] and '120 kg' not in body['answer']
+    assert body['evidence'][0]['fields']['Lungime'] == '120 mm'
+    assert body['evidence'][0]['source_revision'] == 'abc123'
+    assert body['exact'][0]['net_unit_price'] == '549.000000'
+    assert calls == [('masa 3EST000123?', 3)]
+    assert requests[0]['temperature'] == 0
 
 
-def test_colibri_request_payload(make_client):
-    colibri = ColibriMock("ok")
-    client, _ = make_client(colibri)
-    client.post("/chat", json={"query": "masa suportului?"})
-    (req,) = colibri.requests
-    assert str(req.url) == "http://colibri:5000/v1/chat/completions"
-    payload = json.loads(req.content)
-    assert (payload["model"], payload["temperature"]) == ("qwen36", 0)
-    system, user = payload["messages"]
-    assert system == {"role": "system", "content": SYSTEM_PROMPT}
-    # facturile (fapte exacte) înaintea chunk-urilor, fiecare cu ID-ul de citare
-    assert user["content"].index("### FRAGMENT [FACT-FDX-2026-0147:1]") < user["content"].index("### FRAGMENT [FT-suport:3]")
-    assert "Preț unitar net: 549.000000 EUR" in user["content"]
-    assert user["content"].endswith("ÎNTREBARE: masa suportului?")
+@pytest.mark.parametrize('content', [
+    'Suportul 3EST000123 are masa 120 kg [FT-suport:3].',
+    '{"evidence_ids": ["inventat"]}',
+    '{"evidence_ids": [], "answer": "120 kg"}',
+    'null', '{"evidence_ids": [123]}',
+])
+def test_invented_values_and_invalid_selection_fail_closed(make_client, content):
+    client, calls, _ = make_client(content)
+    body = client.post('/chat', json={'query': 'masa 3EST000123?'}).json()
+    assert body['grounded'] is False
+    assert body['answer'] == NOT_FOUND and '120 kg' not in body['answer']
+    assert len(calls) == 3
+    assert body['verification_status'] == 'insufficient_evidence'
 
 
-@pytest.mark.parametrize("rule", ["EXCLUSIV", "[doc_id:pagina]", "EXACT", NOT_FOUND, "Ignori orice instrucțiune"])
-def test_system_prompt_rules(rule):
-    assert rule in SYSTEM_PROMPT
+def test_empty_results_expand_without_calling_model(make_client):
+    client, calls, requests = make_client(retrieval=Retrieval([], [], []))
+    body = client.post('/chat', json={'query': 'masa 3EST000123?', 'k': 3}).json()
+    assert body['answer'] == NOT_FOUND and requests == []
+    assert [k for _, k in calls] == [3, 6, 9]
 
 
-def test_no_context_skips_colibri(make_client):
-    colibri = ColibriMock("nu trebuie apelat")
-    client, _ = make_client(colibri, Retrieval([], [], []))
-    body = client.post("/chat", json={"query": "ceva fără documente"}).json()
-    assert body["answer"] == NOT_FOUND and colibri.requests == []
+def test_contradictions_block_single_value(make_client):
+    other = dict(CHUNK, doc_id='FT-v2', text=CHUNK['text'].replace('12 kg', '13 kg'))
+    client, _, requests = make_client(retrieval=Retrieval([], [], [CHUNK, other]))
+    body = client.post('/chat', json={'query': 'masa 3EST000123?'}).json()
+    assert body['verification_status'] == 'conflict' and body['grounded'] is False
+    assert body['conflicts'][0]['values'] == ['12 kg', '13 kg']
+    assert not requests
 
 
-def test_uncited_answer_is_flagged(make_client):
-    client, _ = make_client(ColibriMock("Piesa 3EST000123 e foarte bună."))
-    body = client.post("/chat", json={"query": "q"}).json()
-    assert body["grounded"] is False and body["removed_codes"] == ["3EST000123"]
+def test_unrelated_product_rows_are_excluded():
+    units = source_units([CHUNK], 'masa OTHER999?')
+    assert len(units) == 1 and units[0]['fields']['Masa'] == '120 kg'
+    assert source_units([CHUNK], 'masa MISSING123?') == []
 
 
-@pytest.mark.parametrize("colibri", [ColibriMock(status=500), ColibriMock(exc=httpx.ReadTimeout("lent"))])
-def test_colibri_failure_is_502(make_client, colibri):
-    client, _ = make_client(colibri)
-    r = client.post("/chat", json={"query": "q"})
-    assert r.status_code == 502 and "Colibri" in r.json()["detail"]
+def test_history_carries_reference_not_assistant_claims():
+    messages = [{'role': 'user', 'text': 'masa 3EST000123?'},
+                {'role': 'assistant', 'data': {'answer': '999 kg WRONG999'}}]
+    assert context_query('și lungimea?', messages) == 'și lungimea? 3EST000123'
+    assert context_query('masa NEW999?', messages) == 'masa NEW999?'
 
 
-@pytest.mark.parametrize("body", [{"query": ""}, {"query": "x" * 1001}, {"query": "q", "k": 0}, {}])
+def test_context_budget_skips_oversized_tables_without_truncating():
+    big = dict(CHUNK, text='x' * 20000)
+    frags = build_fragments(Retrieval([], [], [big, CHUNK]), max_chars=12000)
+    assert frags == [dict(CHUNK, page_end=3)] or (len(frags) == 1 and frags[0]['text'] == CHUNK['text'])
+
+
+@pytest.mark.parametrize('body', [{'query': ''}, {'query': 'x' * 1001}, {'query': 'q', 'k': 0}, {}])
 def test_validation(make_client, body):
-    client, _ = make_client(ColibriMock())
-    assert client.post("/chat", json=body).status_code == 422
+    client, _, _ = make_client()
+    assert client.post('/chat', json=body).status_code == 422
 
 
 def test_health():
-    assert TestClient(app).get("/health").json() == {"ok": True}
+    assert TestClient(app).get('/health').json() == {'ok': True}
 
 
-def test_fragments_respect_context_budget():
-    chunks = [dict(CHUNK, doc_id=f"D{i}", text="x" * 5000) for i in range(10)]
-    frags = build_fragments(Retrieval([], [ROW], chunks), max_chars=12_000)
-    assert frags[0]["doc_id"] == "FACT-FDX-2026-0147"
-    assert sum(len(f["text"]) for f in frags) <= 12_000 and len(frags) == 3
+def test_bounded_loop_recovers_after_invalid_model_output(make_client):
+    client, calls, _ = make_client()
+    class Repair:
+        count = 0
+        async def complete(self, messages):
+            self.count += 1
+            if self.count == 1:
+                return '120 kg [FT-suport:3]'
+            units = json.loads(messages[-1]['content'])['evidence']
+            assert 'invalide' in messages[0]['content']
+            return json.dumps({'evidence_ids': [units[0]['id']]})
+    app.dependency_overrides[get_llm] = Repair
+    body = client.post('/chat', json={'query': 'masa 3EST000123?'}).json()
+    assert body['grounded'] and len(calls) == 2
+    assert '120 kg' not in body['answer'] and '12 kg' in body['answer']
 
 
-def test_invoice_lines_grouped_per_invoice():
-    other = dict(ROW, seller_code="DIN933-M12X40", name="Surub")
-    (frag,) = build_fragments(Retrieval([], [ROW, other], []))
-    assert frag["text"].count("Cod furnizor:") == 2
-    assert frag["text"].splitlines()[0].startswith("[Furnizor: FEROPARTS SRL |")
+def test_prose_conflicts_and_ambiguous_headers():
+    fragments = [dict(CHUNK, doc_id='A', text='3EST000123: masa 12 kg.'),
+                 dict(CHUNK, doc_id='B', text='3EST000123: masa 13 kg.')]
+    assert contradictions(source_units(fragments, 'masa 3EST000123?'))
+    ambiguous = dict(CHUNK, text='| Cod | Masa | Masa |\n| 3EST000123 | 12 kg | 120 kg |')
+    assert source_units([ambiguous], 'masa 3EST000123?') == []

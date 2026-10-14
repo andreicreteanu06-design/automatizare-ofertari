@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/conversations', route => route.request().method() === 'GET'
+    ? route.fulfill({ json: [] })
+    : route.fulfill({ json: { id: '11111111-1111-4111-8111-111111111111', version: 0, ...route.request().postDataJSON() } }));
+});
+
 const result = ok => ({ fx: { source: 'BNR', date: '2026-10-14', eur_ron: '5.00' }, lines: [{ code: 'P1', price_eur: '10', transport_eur: '0', duty_eur: '0', landed_eur: '10', sale_unit_eur: '12', sale_total_eur: '12', margin_eur: '2' }], total_landed_eur: '10.00', total_sale_eur: '12.00', total_margin_eur: '2.00', margin_on_sale_percent: '16.67', compliance: { ok, failures: ok ? [] : [{ code: 'PRICES_NOT_FIRM', message: 'Prețurile trebuie confirmate.' }] } });
 async function fillOffer(page) {
   await page.getByLabel('Număr ofertă', { exact: true }).fill('OF-2026/1');

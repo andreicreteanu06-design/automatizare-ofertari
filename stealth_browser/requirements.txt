@@ -1,0 +1,4 @@
+camoufox[geoip]
+fastapi
+uvicorn
+httpx

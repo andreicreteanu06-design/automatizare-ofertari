@@ -97,16 +97,17 @@ def test_table_continued_with_repeated_header_is_merged():
     assert re.search(r"A1.*\n.*A2.*\n.*A3", c.text)
 
 
-def test_table_continued_without_header_keeps_first_row():
+def test_table_without_matching_header_is_not_guessed_as_continuation():
     doc = new_doc()
     add_table(doc, [["Cod", "Masa"], ["A1", "1 kg"]], 1)
     add_table(doc, [["A2", "2 kg"], ["A3", "3 kg"]], 2)  # continuare fără antet
-    (c,) = chunk_document(doc, META)
-    rows = [ln for ln in c.text.splitlines() if ln.startswith("|") and "---" not in ln]
-    assert [ln.split("|")[1].strip() for ln in rows] == ["Cod", "A1", "A2", "A3"]
+    chunks = chunk_document(doc, META)
+    assert len(chunks) == 2
+    assert chunks[0].page_end == 1 and chunks[1].page_start == 2
 
 
 @pytest.mark.parametrize("second,between,page", [
+    ([["Cod", "Lungime"], ["A2", "2 mm"]], None, 2),      # aceleași coloane, altă proprietate
     ([["X", "Y", "Z"], ["1", "2", "3"]], None, 2),        # alt număr de coloane
     ([["Cod", "Masa"], ["A2", "2 kg"]], "Text intre", 2),  # text între ele
     ([["Cod", "Masa"], ["A2", "2 kg"]], None, 3),          # pagină sărită

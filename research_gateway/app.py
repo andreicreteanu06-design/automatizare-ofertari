@@ -1,23 +1,21 @@
-"""research-gateway: singurul serviciu cu acces la internet.
+"""research-gateway: intermediarul backend-ului pentru acces extern controlat.
 
 POST /research: interogare -> Egress Guard -> SearXNG -> URL-uri (Egress Guard,
-doar http(s) publice) -> Playwright MCP (HTML + innerText) -> extract() -> Laya
+doar http(s) publice) -> Camoufox (HTML + innerText) -> extract() -> Laya
 -> rânduri cu status "verified" sau "unverified" (afișat „Neverificat” în UI).
 
 Răspunsurile de pe internet nu decid nimic singure: un rând e "verified" doar
 dacă extractorul determinist găsește codul în textul vizibil ȘI Laya confirmă.
 """
+import asyncio
 import ipaddress
 import json
 import os
-import re
 from datetime import date
 from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
-from mcp import ClientSession
-from mcp.client.streamable_http import streamable_http_client
 from pydantic import BaseModel, Field
 
 from research_gateway import bnr
@@ -25,33 +23,25 @@ from research_gateway.egress_guard import EgressBlocked, load
 from research_gateway.extract import extract, find_code, page_text
 
 LAYA_WINDOW = 500  # caractere de context în jurul codului trimise lui Laya
-PAGE_JS = ("() => JSON.stringify({html: document.documentElement.outerHTML,"
-           " text: document.body ? document.body.innerText : ''})")
-
-
 def public_http(url):
-    """Doar http(s) spre adrese publice: browserul stă pe rețeaua egress și ar putea
-    altfel atinge router-ul sau alte mașini din LAN.
-    shortcut: nume DNS care rezolvă spre IP-uri private nu sunt prinse aici —
-    upgrade: --blocked-origins în Playwright sau firewall pe rețeaua egress."""
-    parts = urlsplit(url)
-    host = parts.hostname
-    if parts.scheme not in ("http", "https") or not host:
-        return False
+    """Cheap URL filter; authoritative DNS/IP checks run in the browser proxy."""
     try:
-        return ipaddress.ip_address(host).is_global
+        p = urlsplit(url)
+        if (p.scheme not in ('http', 'https') or not p.hostname or p.username or p.password
+                or p.port not in (None, 80, 443) or "\\" in url or any(ord(c) < 33 for c in url)):
+            return False
+        host = p.hostname.rstrip('.').lower()
+        if host == 'localhost' or host.endswith(('.local', '.internal', '.localhost')):
+            return False
+        try:
+            ip = ipaddress.ip_address(host)
+            if getattr(ip, 'ipv4_mapped', None):
+                ip = ip.ipv4_mapped
+            return ip.is_global and not (ip.is_multicast or ip.is_reserved)
+        except ValueError:
+            return '.' in host
     except ValueError:
-        return host != "localhost" and not host.endswith((".local", ".internal", ".localhost"))
-
-
-def parse_evaluate(text):
-    """Rezultatul lui browser_evaluate e text liber (format nedocumentat): acceptă
-    JSON brut, string JSON (dublu codat), secțiune '### Result' și blocuri ```."""
-    m = re.search(r"### Result\s*\n(.*?)(?=\n### |\Z)", text, re.S)
-    body = (m[1] if m else text).strip()
-    body = re.sub(r"^```\w*\s*\n|\n```\s*$", "", body).strip()
-    value = json.loads(body)
-    return json.loads(value) if isinstance(value, str) else value
+        return False
 
 
 async def searxng_search(query):
@@ -61,18 +51,58 @@ async def searxng_search(query):
         return [x["url"] for x in r.json().get("results", []) if x.get("url")]
 
 
-async def mcp_fetch(url):
-    """(html, innerText) pentru URL, prin Playwright MCP (o sesiune izolată per pagină)."""
-    async with streamable_http_client(os.environ["PLAYWRIGHT_MCP_URL"]) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            for tool, args in (("browser_navigate", {"url": url}), ("browser_evaluate", {"function": PAGE_JS})):
-                r = await session.call_tool(tool, args)
-                text = "".join(c.text for c in r.content if getattr(c, "type", None) == "text")
-                if r.is_error:
-                    raise RuntimeError(f"{tool}: {text[:200]}")
-    page = parse_evaluate(text)
-    return page["html"], page["text"]
+async def browser_fetch(url):
+    """Plain HTTP to isolated Camoufox service; no browser protocol in the gateway."""
+    async with httpx.AsyncClient(timeout=170, trust_env=False) as client:
+        response = await client.post(os.environ['STEALTH_BROWSER_URL'].rstrip('/') + '/fetch', json={'url': url})
+        response.raise_for_status()
+        data = response.json()
+        return data['html'], data['text']
+
+
+async def live_research(query, *, guard, search, fetch):
+    # Only the user's current question is accepted. No history or internal documents.
+    guard.check({'query': query})
+    urls, blocked = [], 0
+    for url in await search(query):
+        if url in urls or not public_http(url):
+            continue
+        try:
+            guard.check(url)
+        except EgressBlocked:
+            blocked += 1
+            continue
+        urls.append(url)
+        if len(urls) == 3:
+            break
+
+    async def scrape(url):
+        try:
+            async with asyncio.timeout(175):
+                _, inner = await fetch(url)
+            if not isinstance(inner, str) or not inner.strip():
+                return {'url': url, 'error': 'empty_page'}
+            return {'url': url, 'text': inner.strip()}
+        except Exception:
+            return {'url': url, 'error': 'page_unavailable'}
+
+    pages = await asyncio.gather(*(scrape(url) for url in urls))
+    sources, errors, blocks, budget = [], [], [], 10000
+    for index, page in enumerate(pages):
+        if 'error' in page:
+            errors.append(page)
+            continue
+        prefix = '[' + page['url'] + ']\n'
+        allowance = max(0, budget // (len(pages) - index) - len(prefix) - 2)
+        text = page['text'][:allowance]
+        if not text:
+            continue
+        sources.append({'url': page['url'], 'text': text})
+        block = prefix + text
+        blocks.append(block)
+        budget -= len(block) + 2
+    return {'sources': sources, 'text': '\n\n'.join(blocks), 'errors': errors,
+            'blocked_urls': blocked}
 
 
 async def laya_verify(code, text):
@@ -124,6 +154,10 @@ async def research(code, query, max_pages, *, guard, search, fetch, verify, thre
     return {"query": query, "results": results, "errors": errors, "blocked_urls": blocked}
 
 
+class LiveResearchIn(BaseModel):
+    query: str = Field(min_length=1, max_length=1000)
+
+
 class GuardIn(BaseModel):
     texts: list[str] = Field(min_length=1, max_length=50)
 
@@ -141,11 +175,20 @@ async def http_get(url):
         return r.content
 
 
-def create_app(guard=None, search=searxng_search, fetch=mcp_fetch, verify=laya_verify, threshold=None,
+def create_app(guard=None, search=searxng_search, fetch=browser_fetch, verify=laya_verify, threshold=None,
                bnr_get=http_get):
     guard = guard or load()  # fail-closed: fără denylist validă, serviciul nu pornește
     threshold = threshold if threshold is not None else float(os.environ.get("LAYA_THRESHOLD", 0.9))
     app = FastAPI(title="research-gateway")
+
+    @app.post('/live-research')
+    async def live_endpoint(body: LiveResearchIn):
+        try:
+            return await live_research(body.query, guard=guard, search=search, fetch=fetch)
+        except EgressBlocked as e:
+            raise HTTPException(403, {'blocked': e.rules}) from None
+        except (httpx.HTTPError, TimeoutError):
+            raise HTTPException(502, 'Căutarea web nu este disponibilă.') from None
 
     @app.post("/guard/check")
     def guard_check(body: GuardIn):

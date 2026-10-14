@@ -3,7 +3,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from research_gateway.app import create_app, parse_evaluate, public_http
+from research_gateway.app import create_app, public_http
 from research_gateway.egress_guard import EgressGuard
 
 CODE = "3EST000123"
@@ -146,13 +146,3 @@ def test_create_app_fails_closed_without_denylist(monkeypatch):
 ])
 def test_public_http(url, ok):
     assert public_http(url) is ok
-
-
-@pytest.mark.parametrize("text", [
-    '{"html": "<p>a</p>", "text": "a"}',
-    json.dumps(json.dumps({"html": "<p>a</p>", "text": "a"})),
-    '### Result\n"{\\"html\\": \\"<p>a</p>\\", \\"text\\": \\"a\\"}"\n### Ran Playwright code\n```js\nawait page.evaluate()\n```',
-    '### Result\n```json\n{"html": "<p>a</p>", "text": "a"}\n```',
-])
-def test_parse_evaluate_formats(text):
-    assert parse_evaluate(text) == {"html": "<p>a</p>", "text": "a"}

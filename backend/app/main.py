@@ -1,26 +1,39 @@
-"""Backend API. POST /chat: retriever hibrid -> Colibri -> post-procesor anti-halucinație."""
+"""Backend API: persistent conversations and bounded extractive RAG, optional live web."""
 import os
+import asyncio
 import re
 from decimal import Decimal
 from functools import lru_cache
+from uuid import UUID
+
+import psycopg
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, Request
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from app.llm import Colibri, build_messages
+from app.llm import Colibri
+from app.memory import router as memory_router, get_store, owner
+from app.rag.evidence import answer_question
 from app.quoting import compliance, export
 from app.quoting.email import router as email_router
 from app.quoting.engine import FxError, calc_offer
 from app.quoting.models import Offer
 from app.quoting.saga import SagaExportIn, build_xml, client_cif_ok, company_from_env
-from app.rag.grounding import NOT_FOUND, ground
 
 MAX_CONTEXT_CHARS = 12_000  # ~3.5k tokeni: promptul încape în KV-cache-ul Colibri pe 16 GB
 
 app = FastAPI(title="ofertare-backend")
 app.include_router(email_router)
+app.include_router(memory_router)
+
+
+@app.exception_handler(psycopg.Error)
+async def database_error(request, exc):
+    return JSONResponse(status_code=503, content={"detail": "Memoria persistentă nu este disponibilă. Reîncearcă după restabilirea conexiunii."})
 
 
 def invoice_fragments(rows):
@@ -44,12 +57,12 @@ def invoice_fragments(rows):
 def build_fragments(retrieval, max_chars=MAX_CONTEXT_CHARS):
     """Faptele din facturi întâi, apoi chunk-urile Qdrant, până la bugetul de context."""
     chunks = [{"doc_id": c["doc_id"], "page": c["page"], "page_end": c.get("page_end", c["page"]),
-               "supplier": c.get("supplier"), "doc_type": c.get("doc_type"), "text": c["text"]}
+               "supplier": c.get("supplier"), "doc_type": c.get("doc_type"), "source_revision": c.get("source_revision"), "text": c["text"]}
               for c in retrieval.context]
     out, used = [], 0
     for f in invoice_fragments(retrieval.exact) + chunks:
-        if out and used + len(f["text"]) > max_chars:
-            break
+        if used + len(f["text"]) > max_chars:
+            continue
         out.append(f)
         used += len(f["text"])
     return out
@@ -90,32 +103,42 @@ def get_llm():
 class ChatIn(BaseModel):
     query: str = Field(min_length=1, max_length=1000)
     k: int = Field(5, ge=1, le=10)
+    conversation_id: UUID | None = None
+    version: int | None = Field(default=None, ge=0)
+    request_id: UUID | None = None
+    live_web: bool = False
 
 
 @app.post("/chat")
-async def chat(body: ChatIn, retriever=Depends(get_retriever), llm=Depends(get_llm)):
-    retrieval = await run_in_threadpool(retriever, body.query, body.k)
-    fragments = build_fragments(retrieval)
-    if not fragments:  # nimic de citat: nu pierdem minute de CPU pe Colibri
-        return {"answer": NOT_FOUND, "grounded": True, "citations": [], "removed_codes": [],
-                "removed_citations": [], "codes": retrieval.codes, "exact": []}
+async def chat(body: ChatIn, request: Request, retriever=Depends(get_retriever), llm=Depends(get_llm)):
+    messages = []
+    store = None
+    if body.conversation_id:
+        if body.version is None or body.request_id is None:
+            raise HTTPException(422, "conversation_id necesită version și request_id.")
+        workspace = owner(request)
+        store = await run_in_threadpool(get_store)
+        prior = await run_in_threadpool(store.previous, workspace, body.conversation_id, body.request_id)
+        if prior:
+            if prior['query'] != body.query or prior['response'].get('live_web', False) != body.live_web:
+                raise HTTPException(409, "ID-ul cererii a fost folosit pentru altă întrebare.")
+            return prior['response']
+        conversation = await run_in_threadpool(store.load, workspace, body.conversation_id)
+        if conversation['version'] != body.version:
+            raise HTTPException(409, "Conversația s-a modificat. Reîncarcă istoricul.")
+        messages = conversation['messages']
     try:
-        raw = await llm.complete(build_messages(body.query, fragments))
+        async with asyncio.timeout(800):
+            result = await answer_question(body.query, body.k, messages, retriever, llm, body.live_web)
+    except TimeoutError:
+        raise HTTPException(504, "Bugetul de timp pentru verificare a expirat. Reîncearcă.") from None
     except httpx.HTTPError as e:
-        raise HTTPException(502, f"Colibri indisponibil: {type(e).__name__}") from None
-    g = ground(raw, fragments)
-    by_key = {(f["doc_id"], f["page"]): f for f in fragments}
-    return {
-        "answer": g.answer,
-        "grounded": g.grounded,
-        "citations": [{"cite": f"[{d}:{p}]", "doc_id": d, "page": p,
-                       "supplier": by_key.get((d, p), {}).get("supplier"),
-                       "doc_type": by_key.get((d, p), {}).get("doc_type")} for d, p in g.citations],
-        "removed_codes": g.removed_codes,
-        "removed_citations": g.removed_citations,
-        "codes": retrieval.codes,
-        "exact": [_money_safe(r) for r in retrieval.exact],  # faptele din facturi, pentru UI
-    }
+        raise HTTPException(502, f"Serviciu RAG indisponibil: {type(e).__name__}") from None
+    result = jsonable_encoder(result)
+    if store:
+        result = await run_in_threadpool(store.append, workspace, body.conversation_id,
+                                        body.version, body.request_id, body.query, result)
+    return result
 
 
 def _money_safe(row):

@@ -71,3 +71,8 @@ Pune o factură e-Factura (XML/ZIP) în `data/inbox/invoices/` → în ~40 s apa
 Formatul datei și separatorul zecimal din XML-ul Saga nu sunt documentate public. În Saga:
 tipărește o factură de ieșire cu „Formular PDF” → copiază XML-ul din `C:\TEMP\Facturi` în
 `tests/fixtures/saga/` și rulează `pytest tests/test_saga.py`. Dacă testul trece, importul e sigur.
+
+
+## Live Web RAG opțional
+
+`POST /chat` acceptă `live_web: bool = false`. Checkbox-ul „🌍 Căutare Live Web (Perplexity)” activează căutarea externă pentru întrebarea curentă, filtrată prin Egress Guard. Istoricul nu este trimis către căutarea web. Citările web folosesc `[https://...]`; răspunsul include `live_web` și `web_research`. Serviciul Camoufox înlocuiește Playwright MCP. Arhitectură, contracte și limite: [Live Web RAG](LIVE_WEB.md).

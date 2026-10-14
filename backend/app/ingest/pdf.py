@@ -2,7 +2,7 @@
 
 Reguli de chunking:
   - un tabel = un chunk, ÎNTREG, oricât de mare: nu se taie niciodată;
-  - un tabel continuat pe pagina următoare (imediat după, același nr. de coloane)
+  - un tabel continuat pe pagina următoare (imediat după, aceleași antete)
     e lipit de primul — Docling le detectează ca două tabele separate;
   - textul se grupează pe secțiuni până la MAX_CHARS, fără să treacă peste o pagină
     (ca citarea [doc_id:pagina] să fie exactă);
@@ -10,6 +10,7 @@ Reguli de chunking:
       [Furnizor: <Nume> | Producător: <Mfr> | Doc: <Tip> | Pagina <Nr>]
 """
 import argparse
+import hashlib
 import os
 import re
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ class DocMeta:
     supplier: str
     manufacturer: str
     doc_type: str
+    source_revision: str | None = None
 
 
 @dataclass(frozen=True)
@@ -77,7 +79,9 @@ def chunk_document(doc, meta, max_chars=MAX_CHARS):
                 continue
             prev = blocks[-1] if blocks else None
             if (prev and prev["kind"] == "table" and prev["ncols"] == item.data.num_cols
-                    and min(pages) == prev["p1"] + 1):
+                    and min(pages) == prev["p1"] + 1
+                    and _cells(next(x for x in prev["body"].splitlines() if x.lstrip().startswith('|')))
+                    == _cells(next(x for x in md.splitlines() if x.lstrip().startswith('|')))):
                 prev["body"] = _merge_tables(prev["body"], md)
                 prev["p1"] = max(pages)
                 continue
@@ -135,8 +139,10 @@ def main(argv=None):
     a = p.parse_args(argv)
 
     from app.rag.index import BgeM3, index_chunks, qdrant_client
-    meta = DocMeta(doc_id_for(a.pdf), a.supplier, a.manufacturer, a.doc_type)
+    meta = DocMeta(doc_id_for(a.pdf), a.supplier, a.manufacturer, a.doc_type, hashlib.sha256(Path(a.pdf).read_bytes()).hexdigest())
     chunks = chunk_document(convert_pdf(a.pdf, a.ocr), meta)
+    if not chunks:
+        raise ValueError('PDF fără text/tabele extrase. Verifică documentul și reîncearcă folosind --ocr pentru scanări.')
     index_chunks(qdrant_client(), BgeM3(), chunks, meta)
     tables = sum(c.kind == "table" for c in chunks)
     print(f"{meta.doc_id}: {len(chunks)} chunk-uri ({tables} tabele) indexate")

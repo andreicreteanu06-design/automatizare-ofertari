@@ -34,86 +34,65 @@ Verificare rapidă — backend-ul este viu.
 
 ---
 
-## 2. `POST /chat`
+## 2. `POST /chat` — memorie și verificare extractivă
 
-Endpoint-ul principal RAG. Trimite o întrebare; primește răspunsul cu citări `[doc_id:pagina]`, filtrat de post-procesorul anti-halucinație.
+Chat-ul selectează dovezi din documente și afișează exclusiv textul/rândurile copiate de server. Modelul returnează ID-uri de dovezi, nu valori tehnice sau răspuns liber. Vechiul post-procesor de coduri rămâne disponibil ca utilitar, dar nu este controlul de siguranță al endpoint-ului.
 
-### Request Body
+### Request
 
-| Câmp    | Tip    | Obligatoriu | Validare              | Descriere                         |
-|---------|--------|-------------|-----------------------|-----------------------------------|
-| `query` | string | da          | `min_length=1, max_length=1000` | Întrebarea utilizatorului         |
-| `k`     | int    | nu          | `ge=1, le=10`, default `5`      | Câte chunk-uri Qdrant să caute   |
-
-**Exemplu request:**
 ```json
 {
-  "query": "cât costă 3EST-000-123?",
-  "k": 3
+  "query": "Care este masa pentru 3EST000123?",
+  "k": 5,
+  "conversation_id": "11111111-1111-4111-8111-111111111111",
+  "version": 0,
+  "request_id": "22222222-2222-4222-8222-222222222222"
 }
 ```
 
-### Response `200`
+`query`: 1–1000 caractere; `k`: 1–10, implicit 5. Pentru apeluri fără memorie, omite ultimele trei câmpuri. Pentru conversații persistente, toate trei sunt necesare: UUID-ul conversației, versiunea citită și un UUID unic per întrebare. Refolosește `request_id` când reîncerci aceeași cerere după o eroare de rețea. Același ID cu altă întrebare este respins.
 
-| Câmp                 | Tip               | Descriere                                                                 |
-|----------------------|-------------------|---------------------------------------------------------------------------|
-| `answer`             | string            | Răspunsul filtrat. Codurile nesusținute sunt înlocuite cu `[cod neverificat]`. |
-| `grounded`           | bool              | `true` dacă răspunsul are cel puțin o citare validă, sau e `NOT_FOUND`.   |
-| `citations`          | array of object   | Citările rămase după filtrare, în ordinea apariției.                       |
-| `citations[].cite`   | string            | Forma afișabilă: `"[FT-suport:3]"`                                        |
-| `citations[].doc_id` | string            | ID-ul documentului sursă                                                  |
-| `citations[].page`   | int               | Pagina din document                                                       |
-| `citations[].supplier` | string \| null  | Furnizorul asociat fragmentului                                           |
-| `citations[].doc_type` | string \| null  | Tipul documentului: `"Factură"`, `"Fișă tehnică"` etc.                    |
-| `removed_codes`      | array of string   | Coduri de piesă șterse din răspuns (neverificate în fragmente).            |
-| `removed_citations`  | array of string   | Citări `[doc_id:pagina]` care nu corespund niciunui fragment.              |
-| `codes`              | array of string   | Coduri candidate extrase din query (normalizate).                         |
-| `exact`              | array of object   | Faptele brute din facturi (rândurile `price_history`), pentru afișare UI. |
+### Response
 
-**Exemplu response (succes cu citări):**
-```json
-{
-  "answer": "Suportul 3EST000123 are 12 kg [FT-suport:3]. Prețul net a fost 549.000000 EUR [FACT-FDX-2026-0147:1]. Înlocuitor: [cod neverificat] [FT-suport:3].",
-  "grounded": true,
-  "citations": [
-    { "cite": "[FT-suport:3]", "doc_id": "FT-suport", "page": 3, "supplier": "Feroparts SRL", "doc_type": "Fișă tehnică" },
-    { "cite": "[FACT-FDX-2026-0147:1]", "doc_id": "FACT-FDX-2026-0147", "page": 1, "supplier": "FEROPARTS SRL", "doc_type": "Factură" }
-  ],
-  "removed_codes": ["3EST000999"],
-  "removed_citations": [],
-  "codes": ["3EST000123"],
-  "exact": [
-    {
-      "seller_code": "3EST-000-123",
-      "buyer_code": "INT-00042",
-      "name": "Suport boghiu",
-      "supplier": "FEROPARTS SRL",
-      "invoice_number": "FDX-2026/0147",
-      "issue_date": "2026-09-15",
-      "currency": "EUR",
-      "quantity": "4",
-      "unit_code": "H87",
-      "unit_price": "555.000000",
-      "net_unit_price": "549.000000",
-      "hs_code": "86079910",
-      "has_doc_allowance": true
-    }
-  ]
-}
-```
+Câmpurile `answer`, `grounded`, `citations`, `codes`, `exact`, `removed_codes`, `removed_citations` sunt păstrate. Listele `removed_*` sunt goale în noul flux: răspunsurile libere sau ID-urile invalide sunt respinse integral.
 
-**Exemplu response (fără rezultate):**
-```json
-{
-  "answer": "Nu am găsit această informație în documentele interne.",
-  "grounded": true,
-  "citations": [],
-  "removed_codes": [],
-  "removed_citations": [],
-  "codes": [],
-  "exact": []
-}
-```
+Câmpuri noi:
+
+| Câmp | Semnificație |
+|---|---|
+| `verification_status` | `verified_excerpts`, `insufficient_evidence` sau `conflict` |
+| `verification_scope` | Limitele verificării: fidelitate față de textul extras, nu certificarea documentului sau a OCR-ului |
+| `evidence[]` | `id`, `doc_id`, `page`, `page_end`, `quote`, `fields`, `source_revision`, `supplier`, `doc_type`, `properties`, `codes` |
+| `conflicts[]` | Cod/proprietate, valori diferite și ID-urile dovezilor conflictuale |
+| `attempts[]` | Numărul încercării, `k` și rezultatul verificării |
+| `conversation_id`, `version` | Prezente după salvarea unui tur persistent |
+
+`source_revision` este amprenta SHA-256 a PDF-ului, nu numărul de revizie declarat de producător. Este absentă pentru indexările vechi; reindexează fișierele pentru a o popula. Pentru fragmente pe mai multe pagini, `page` este începutul intervalului și `page_end` finalul, nu localizarea exactă a celulei.
+
+`grounded: true` înseamnă că răspunsul conține dovezi copiate din sursele recuperate. Nu înseamnă că documentul este actual, corect sau că răspunsul este exhaustiv. `grounded` este `false` pentru abținere și conflicte. Tabelul `exact` păstrează separat prețurile din facturi, cu sumele ca stringuri.
+
+Bucla are maximum trei încercări, crește `k` până la 10 și extinde determinist termenii tehnici cunoscuți. Nu folosește valori inventate de LLM pentru o nouă căutare. Fiecare generare este limitată la 240 secunde, iar fluxul RAG la 800 secunde. Nu există auto-antrenare.
+
+### Memoria conversațiilor
+
+- `POST /conversations`, body: `{"project":"Proiect A","title":"Suport boghiu"}` — creează o conversație și cookie-ul `ofertare_workspace` (`HttpOnly`, `SameSite=Strict`, valabil un an).
+- `GET /conversations` — ultimele 100 conversații ale spațiului browserului.
+- `GET /conversations/{uuid}` — proiect, titlu, versiune, ultimele 100 tururi (întrebare+răspuns) și ultimele 100 referințe salvate.
+- `POST /conversations/{uuid}/references`, body: `{"evidence_id":"<ID de 24 caractere hex din răspuns>","note":"Observație de revizuire"}` — salvează o dovadă deja prezentă în conversație și o notă de maximum 1000 caractere. Notele și corecțiile propuse nu sunt folosite ca fapte de către model.
+
+Conversațiile sunt izolate prin cookie-ul browserului și ID-ul conversației. Numele proiectului organizează conversațiile; nu este un mecanism de autentificare sau ACL. Pentru o implementare multiutilizator este necesară integrarea unei autentificări reale. Pierderea cookie-ului pierde accesul din acel browser; datele rămân în Postgres. Browserul păstrează doar cookie-ul, nu conversațiile în localStorage.
+
+La o întrebare fără cod, se caută ultimul cod explicit din ultimele 12 mesaje ale conversației curente. Afirmațiile asistentului și notițele nu intră în baza de dovezi; documentele sunt recuperate din nou. Dacă referința este ambiguă, utilizatorul trebuie să specifice codul.
+
+### Erori
+
+- `401`: lipsește cookie-ul unui apel la memoria persistentă.
+- `404`: conversația nu aparține spațiului browserului sau nu există.
+- `409`: versiune veche / cereri concurente / reutilizarea ID-ului pentru altă întrebare. Reîncarcă istoricul.
+- `422`: parametri sau referință invalidă.
+- `502`: serviciu RAG indisponibil.
+- `503`: Postgres/memoria persistentă indisponibilă; nu se pretinde salvarea datelor.
+- `504`: bugetul global de timp al verificării a expirat.
 
 ---
 
@@ -630,7 +609,12 @@ Generează un draft de e-mail către furnizor (cerere de ofertă sau clarificăr
 
 ### Comportamente speciale
 
-- **Anti-halucinație (`/chat`):** Răspunsul LLM este post-procesat determinist. Citările care nu corespund unui fragment sunt șterse. Codurile de piesă care apar în propoziții fără citare validă (sau care nu se regăsesc în fragmentele citate) sunt înlocuite cu `[cod neverificat]`.
+- **Verificare extractivă (`/chat`):** LLM-ul selectează numai ID-uri de dovezi. Serverul copiază pasajele/celulele originale și respinge selecțiile invalide. După maximum trei încercări răspunde cu dovezi, abținere sau conflict. Fidelitatea față de textul extras nu certifică OCR-ul sau corectitudinea documentului; vezi secțiunea 2.
 - **Egress Guard (`/emails/draft`):** Textul final (subiect + corp) trece prin `/guard/check` pe research-gateway. Dacă apare un termen din denylist (ex: nume client, proiect), draftul nu este returnat. Fail-closed: dacă guard-ul este indisponibil → `503`.
 - **Monede:** Backend-ul nu are acces direct la internet. Cursul BNR este obținut prin `research-gateway /fx/bnr`. Toate sumele sunt convertite intern la EUR via FxSnapshot.
 - **Decimal ca string:** Toate valorile monetare sunt serializate ca string JSON pentru a preveni pierderea de precizie (ex: `"549.000000"` în loc de `549.0`).
+
+
+## Live Web RAG opțional
+
+`POST /chat` acceptă `live_web: bool = false`. Checkbox-ul „🌍 Căutare Live Web (Perplexity)” activează căutarea externă pentru întrebarea curentă, filtrată prin Egress Guard. Istoricul nu este trimis către căutarea web. Citările web folosesc `[https://...]`; răspunsul include `live_web` și `web_research`. Serviciul Camoufox înlocuiește Playwright MCP. Arhitectură, contracte și limite: [Live Web RAG](LIVE_WEB.md).

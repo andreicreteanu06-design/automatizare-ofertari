@@ -15,7 +15,7 @@ Sistemul automatizează etapele repetitive, de la preluarea și clasificarea ata
 Sistemul este containerizat cu Docker și folosește separarea serviciilor și verificări explicite ale datelor, în trei rețele distincte:
 
 * **`internal` (Fără acces web direct):** Backend FastAPI, Postgres, Qdrant și modelele AI locale configurate prin Colibri (Qwen3.6-35B-A3B și Laya). Rețeaua este declarată cu `internal: true`.
-* **`egress` (Servicii cu acces extern):** SearXNG, Playwright MCP, serviciul IMAP `mail-fetch` și descărcarea inițială a modelelor prin profilul `setup`. `research-gateway`, conectat la `internal` și `egress`, intermediază cercetarea web și obținerea cursului BNR. Interogările de cercetare și URL-urile procesate de gateway sunt verificate de modulul determinist **Egress Guard**; acesta este un filtru aplicativ, nu un firewall pentru întregul trafic al rețelei.
+* **`egress` (Servicii cu acces extern):** SearXNG, Camoufox (`stealth-browser`), serviciul IMAP `mail-fetch` și descărcarea inițială a modelelor prin profilul `setup`. `research-gateway`, conectat la `internal` și `egress`, intermediază cercetarea web și obținerea cursului BNR. Interogările de cercetare și URL-urile procesate de gateway sunt verificate de modulul determinist **Egress Guard**; acesta este un filtru aplicativ, nu un firewall pentru întregul trafic al rețelei.
 * **`edge`:** Expune interfața React prin Nginx, pe `127.0.0.1:8080`. Nginx este conectat și la `internal` pentru proxy-ul `/api` și aplică headerele de securitate, inclusiv Content Security Policy. Frontend-ul este compilat într-un build Docker multi-stage; Node.js nu este necesar pe host.
 
 Preluarea e-mailurilor și clasificarea lor rulează în servicii separate: `mail-fetch` are acces la `egress`, iar `mail-classify` doar la `internal`. Transferul atașamentelor se face printr-un director de carantină pe disc, fără o conexiune de rețea între cele două servicii. Aceasta este o separare logică, nu o barieră fizică.
@@ -25,9 +25,11 @@ Egress Guard folosește o listă locală de termeni și expresii interzise. Conf
 ## ✨ Funcționalități Tehnice Principale
 
 * **Ingestie Automată & Triaj E-mail:** Facturile e-Factura XML/ZIP sunt recunoscute determinist și procesate în Postgres. Laya, un clasificator bazat pe ModernBERT, clasifică celelalte atașamente; cazurile incerte sunt păstrate pentru revizuire. Fișele tehnice PDF sunt parsate cu Docling și indexate în Qdrant pentru căutare semantică.
-* **Chat RAG Anti-Halucinație:** Răspunsurile includ citări în formatul `[doc_id:pagina]`. Post-procesarea elimină citările nevalidate și înlocuiește codurile nesusținute cu `[cod neverificat]`. Prețurile identificate în facturi sunt afișate separat de răspunsul generat.
+* **Chat RAG Anti-Halucinație:** Răspunsurile includ citări în formatul `[doc_id:pagina]`. O buclă limitată la trei încercări recuperează dovezi, iar modelul selectează doar ID-uri; serverul copiază pasajele și valorile din surse. ID-urile inventate și răspunsurile libere sunt respinse; valorile contradictorii detectate sunt semnalate. Această verificare nu certifică OCR-ul, actualitatea sau corectitudinea documentului. Prețurile identificate în facturi sunt afișate separat de răspunsul generat.
 * **ERP Integration (Saga Software):** Motorul de calcul al costului total livrat (*Landed Cost*) include achiziția, transportul, taxele vamale, conversia valutară și adaosul comercial. Generează oferta Word, calculul intern Excel și XML-ul destinat importului în Saga la „Ieșiri”. Exporturile sunt blocate dacă checklist-ul de conformitate eșuează; compatibilitatea cu instalarea Saga a clientului trebuie verificată conform ghidului de lansare.
 * **Șabloane E-mail Multilingve:** Cererile de ofertă (RFQ) și clarificările tehnice sunt disponibile în 10 limbi. Româna și engleza folosesc șabloane deterministe; celelalte limbi sunt traduse prin LLM-ul local. Codurile articolelor sunt verificate, iar Egress Guard blochează mesajele care conțin termeni interziși, inclusiv numele clientului final dacă este configurat în denylist. Aplicația generează drafturi, fără trimitere automată.
+
+**Memorie persistentă:** conversațiile și referințele de revizuire sunt salvate în Postgres și pot fi reluate după reîncărcarea paginii. Proiectele organizează conversațiile în spațiul browserului, identificat printr-un cookie HttpOnly. Nu există încă autentificare pe conturi; notele utilizatorului nu devin automat fapte pentru răspunsuri. Detalii și limite: [MEMORIE.md](MEMORIE.md).
 
 ## 🚀 Instalare și Rulare la Client
 
@@ -73,6 +75,8 @@ Instalarea este destinată unei infrastructuri controlate de client, cu Docker �
    Interfața este disponibilă la `http://127.0.0.1:8080`. Pentru a rula fără triajul de e-mailuri, omite parametrul `--profile mail`. Frontend-ul este construit și servit integral în containere, prin configurația Nginx a proiectului.
 
    **Build și conectivitate:** construirea imaginilor și pregătirea modelelor necesită acces la sursele de pachete și imagini sau la mirror-uri interne. Pentru instalare fără acces extern, transferă în prealabil imaginile și modelele și pornește cu `--no-build`. Funcțiile care folosesc IMAP, cercetarea web și cursurile BNR necesită în continuare conectivitatea aferentă; simplul transfer al imaginilor nu le face disponibile offline.
+
+**Live Web RAG opțional:** toggle-ul din chat activează căutarea SearXNG și extragerea Camoufox pentru maximum trei pagini publice. Întrebarea curentă trece prin Egress Guard; dovezile web sunt citate prin URL. Detalii, limite și contracte: [LIVE_WEB.md](LIVE_WEB.md).
 
 ## 📚 Documentație suplimentară
 

@@ -61,7 +61,7 @@ def index_chunks(client, embedder, chunks, meta):
             vector={DENSE: dense, SPARSE: _sparse(sparse)},
             payload={"doc_id": c.doc_id, "page": c.page_start, "page_end": c.page_end, "kind": c.kind,
                      "section": c.section, "text": c.text, "supplier": meta.supplier,
-                     "manufacturer": meta.manufacturer, "doc_type": meta.doc_type})
+                     "manufacturer": meta.manufacturer, "doc_type": meta.doc_type, "source_revision": meta.source_revision})
         for c, (dense, sparse) in zip(chunks, vectors)])
 
 
