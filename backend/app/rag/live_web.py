@@ -31,9 +31,14 @@ async def fetch_live(query):
             remaining -= len(text)
             fragments.append({'doc_id': url, 'page': 1, 'page_end': 1, 'text': text,
                               'source_type': 'web', 'url': url, 'supplier': parsed.hostname,
+                              'source_role': source.get('source_role', 'secondary'),
+                              'manufacturer': source.get('manufacturer'), 'publisher_group': source.get('publisher_group', parsed.hostname),
+                              'stale': source.get('stale', False), 'access_status': source.get('access_status', 'accessible'),
                               'doc_type': 'Pagină web', 'source_revision': hashlib.sha256(text.encode()).hexdigest(),
-                              'retrieved_at': datetime.now(timezone.utc).isoformat()})
+                              'retrieved_at': source.get('retrieved_at', datetime.now(timezone.utc).isoformat())})
         return fragments, {'sources': [f['url'] for f in fragments], 'errors': data.get('errors', []),
+                           'access_status': data.get('access_status', 'unavailable'),
+                           'pages': [{k: f.get(k) for k in ('url', 'access_status', 'stale', 'retrieved_at', 'source_role')} for f in fragments],
                            'blocked_urls': data.get('blocked_urls', 0)}
     except HTTPException:
         raise

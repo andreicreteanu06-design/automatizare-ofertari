@@ -88,6 +88,7 @@ def source_units(fragments, query):
                               'source_revision': f.get('source_revision'), 'properties': matched,
                               'source_type': f.get('source_type', 'internal'), 'url': f.get('url'),
                               'retrieved_at': f.get('retrieved_at'),
+                              **{key: f.get(key) for key in ('source_role', 'manufacturer', 'publisher_group', 'stale', 'access_status')},
                               'codes': [c for c in codes if _code_in(c, quote)]})
     return units
 
@@ -200,10 +201,13 @@ async def answer_question(query, k, messages, retriever, llm, live_web=False):
         text = '; '.join(f'{key}: {value}' for key, value in u['fields'].items()) if u['fields'] else u['quote']
         cite = f"[{u['doc_id']}]" if u.get('source_type') == 'web' else f"[{u['doc_id']}:{u['page']}]"
         parts.append(f"{text} {cite}")
-    answer = '\n'.join(parts) if parts else NOT_FOUND
+    answer = '\n'.join(parts) if parts else ('Nu am găsit dovezi suficiente în sursele interne și web consultate.' if live_web else NOT_FOUND)
     if conflicts:
         answer = 'Sursele recuperate conțin valori diferite. Nu pot confirma o valoare unică.\n' + answer
+    from app.rag.assessment import assess
+    assessment = assess(chosen, conflicts, resolved)
     return {'answer': answer, 'grounded': status == 'verified_excerpts', 'verification_status': status,
+            **assessment,
             'live_web': live_web, 'web_research': web_report,
             'verification_scope': 'Copiere exactă din textul extras; nu certifică OCR-ul, actualitatea sau corectitudinea documentului.',
             'citations': citations, 'evidence': chosen, 'conflicts': conflicts, 'attempts': trace,

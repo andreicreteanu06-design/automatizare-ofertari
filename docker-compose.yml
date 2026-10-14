@@ -190,8 +190,10 @@ services:
       LAYA_URL: http://laya:5000/v1/systemone
       LAYA_THRESHOLD: "0.9"
       DENYLIST_PATH: /config/denylist.yaml
+      SOURCE_POLICY_PATH: /config/source_policy.json
     volumes:
       - ./config/denylist.yaml:/config/denylist.yaml:ro
+      - ${SOURCE_POLICY_FILE:-./config/source_policy.example.json}:/config/source_policy.json:ro
     mem_limit: 256m
     restart: unless-stopped
 

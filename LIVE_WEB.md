@@ -1,5 +1,7 @@
 # Live Web RAG
 
+Politica suplimentară pentru acces, confirmarea valorilor, istoricul furnizorilor și cache: [SOURCE_QUALITY.md](SOURCE_QUALITY.md).
+
 În Chat tehnic, opțiunea **🌍 Căutare Live Web (Perplexity)** este dezactivată implicit. Activarea ei trimite numai întrebarea curentă către gateway; istoricul conversației, documentele interne și prețurile din facturi nu sunt anexate cererii externe. Întrebarea însăși poate conține informații sensibile: configurează `config/denylist.yaml` înainte de utilizare.
 
 ## Flux

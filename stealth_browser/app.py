@@ -1,6 +1,7 @@
 """Isolated Camoufox page fetcher. No cookies or browsing profiles are persisted."""
 import asyncio
 import os
+import time
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -12,6 +13,7 @@ app = FastAPI(title='stealth-browser')
 # Browser memory is expensive. Gateway can schedule three pages concurrently;
 # this service serializes actual browser instances within its 1.5 GiB budget.
 slots = asyncio.Semaphore(1)
+next_navigation = 0.0
 
 
 class FetchIn(BaseModel):
@@ -67,11 +69,14 @@ async def fetch_page(url):
 
 @app.post('/fetch')
 async def fetch(body: FetchIn):
+    global next_navigation
     if not public_url(body.url):
         raise HTTPException(403, 'Sunt permise numai destinații HTTP(S) publice pe porturile 80/443.')
     try:
         async with asyncio.timeout(160):
             async with slots:
+                await asyncio.sleep(max(0, next_navigation - time.monotonic()))
+                next_navigation = time.monotonic() + 2
                 async with asyncio.timeout(50):
                     return await fetch_page(body.url)
     except TimeoutError:

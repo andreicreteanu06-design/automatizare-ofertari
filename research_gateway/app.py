@@ -12,6 +12,9 @@ import ipaddress
 import json
 import os
 from datetime import date
+from datetime import datetime, timezone
+from collections import OrderedDict
+import time
 from urllib.parse import urlsplit
 
 import httpx
@@ -21,6 +24,25 @@ from pydantic import BaseModel, Field
 from research_gateway import bnr
 from research_gateway.egress_guard import EgressBlocked, load
 from research_gateway.extract import extract, find_code, page_text
+from research_gateway.quality import access_check, authority, load_policy
+
+
+class PageCache:
+    """Bounded process-local fallback; never silently presented as current data."""
+    def __init__(self):
+        self.rows = OrderedDict()
+
+    def put(self, url, page):
+        self.rows[url] = (time.monotonic(), dict(page))
+        self.rows.move_to_end(url)
+        while len(self.rows) > 100:
+            self.rows.popitem(last=False)
+
+    def get(self, url):
+        row = self.rows.get(url)
+        if row and time.monotonic() - row[0] < 86400:
+            return dict(row[1], stale=True)
+        return None
 
 LAYA_WINDOW = 500  # caractere de context în jurul codului trimise lui Laya
 def public_http(url):
@@ -57,14 +79,22 @@ async def browser_fetch(url):
         response = await client.post(os.environ['STEALTH_BROWSER_URL'].rstrip('/') + '/fetch', json={'url': url})
         response.raise_for_status()
         data = response.json()
-        return data['html'], data['text']
+        return data
 
 
-async def live_research(query, *, guard, search, fetch):
+def unpack_page(page, original):
+    if isinstance(page, dict):
+        return page['html'], page['text'], page.get('url', original)
+    return *page, original  # compatibility with injected test fetchers
+
+
+async def live_research(query, *, guard, search, fetch, policy=None, cache=None):
     # Only the user's current question is accepted. No history or internal documents.
     guard.check({'query': query})
+    policy = policy or {}
     urls, blocked = [], 0
-    for url in await search(query):
+    ranked = sorted((await search(query))[:30], key=lambda u: {'manufacturer': 0, 'authorized_distributor': 1, 'secondary': 2}[authority(u, policy)['source_role']])
+    for url in ranked:
         if url in urls or not public_http(url):
             continue
         try:
@@ -77,14 +107,37 @@ async def live_research(query, *, guard, search, fetch):
             break
 
     async def scrape(url):
+        failure = None
         try:
             async with asyncio.timeout(175):
-                _, inner = await fetch(url)
-            if not isinstance(inner, str) or not inner.strip():
-                return {'url': url, 'error': 'empty_page'}
-            return {'url': url, 'text': inner.strip()}
+                html, inner, final_url = unpack_page(await fetch(url), url)
+            guard.check(final_url)
+            if not public_http(final_url):
+                return {'url': url, 'error': 'destination_rejected', 'access_status': 'blocked'}
+            status, reason = access_check(html, inner)
+            if status != 'accessible':
+                failure = {'url': url, 'error': reason, 'access_status': status}
+            else:
+                page = {'url': final_url, 'text': inner.strip()[:10000], 'access_status': 'accessible',
+                        'retrieved_at': datetime.now(timezone.utc).isoformat(), 'stale': False,
+                        **authority(final_url, policy)}
+                if cache is not None:
+                    cache.put(url, page)
+                return page
+        except EgressBlocked:
+            return {'url': url, 'error': 'destination_rejected', 'access_status': 'blocked'}
+        except (TimeoutError, httpx.TimeoutException):
+            failure = {'url': url, 'error': 'timeout', 'access_status': 'timeout'}
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code
+            failure = {'url': url, 'error': 'page_unavailable', 'access_status': 'blocked' if code in (401, 403, 429) else 'timeout' if code == 504 else 'unavailable'}
         except Exception:
-            return {'url': url, 'error': 'page_unavailable'}
+            failure = {'url': url, 'error': 'page_unavailable', 'access_status': 'unavailable'}
+        old = cache.get(url) if cache is not None else None
+        if old:
+            guard.check(old['url'])
+            return dict(old, access_status=failure['access_status'], access_error=failure['error'])
+        return failure
 
     pages = await asyncio.gather(*(scrape(url) for url in urls))
     sources, errors, blocks, budget = [], [], [], 10000
@@ -97,11 +150,15 @@ async def live_research(query, *, guard, search, fetch):
         text = page['text'][:allowance]
         if not text:
             continue
-        sources.append({'url': page['url'], 'text': text})
+        sources.append(dict(page, text=text))
+        if page.get('stale'):
+            errors.append({'url': page['url'], 'error': page['access_error'], 'access_status': page['access_status']})
         block = prefix + text
         blocks.append(block)
         budget -= len(block) + 2
+    failures = {e.get('access_status', 'unavailable') for e in errors}
     return {'sources': sources, 'text': '\n\n'.join(blocks), 'errors': errors,
+            'access_status': 'accessible' if sources and not errors else 'partial' if sources else next(iter(failures)) if len(failures) == 1 else 'unavailable',
             'blocked_urls': blocked}
 
 
@@ -130,7 +187,12 @@ async def research(code, query, max_pages, *, guard, search, fetch, verify, thre
             continue
         seen.add(url)
         try:
-            html, inner = await fetch(url)
+            html, inner, final_url = unpack_page(await fetch(url), url)
+            guard.check(final_url)
+            status, reason = access_check(html, inner)
+            if status != 'accessible':
+                errors.append({'url': url, 'error': reason, 'access_status': status})
+                continue
             hits = extract(html, code, url, inner_text=inner)
         except Exception as e:  # o pagină stricată nu oprește restul căutării
             errors.append({"url": url, "error": f"{type(e).__name__}: {str(e)[:300]}"})
@@ -180,11 +242,15 @@ def create_app(guard=None, search=searxng_search, fetch=browser_fetch, verify=la
     guard = guard or load()  # fail-closed: fără denylist validă, serviciul nu pornește
     threshold = threshold if threshold is not None else float(os.environ.get("LAYA_THRESHOLD", 0.9))
     app = FastAPI(title="research-gateway")
+    policy, cache = load_policy(), PageCache()
+    live_slots = asyncio.Semaphore(2)
 
     @app.post('/live-research')
     async def live_endpoint(body: LiveResearchIn):
         try:
-            return await live_research(body.query, guard=guard, search=search, fetch=fetch)
+            async with asyncio.timeout(200):
+                async with live_slots:
+                    return await live_research(body.query, guard=guard, search=search, fetch=fetch, policy=policy, cache=cache)
         except EgressBlocked as e:
             raise HTTPException(403, {'blocked': e.rules}) from None
         except (httpx.HTTPError, TimeoutError):

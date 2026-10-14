@@ -8,6 +8,7 @@
 *.pfx
 secrets/
 config/denylist.yaml
+config/source_policy.json
 # denylist.yaml conține chiar numele clientului/proiectelor: rămâne local.
 # În repo stă doar config/denylist.example.yaml.
 

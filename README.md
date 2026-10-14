@@ -80,6 +80,8 @@ Instalarea este destinată unei infrastructuri controlate de client, cu Docker �
 
 ## 📚 Documentație suplimentară
 
+- [SOURCE_QUALITY.md](SOURCE_QUALITY.md) — Confirmarea valorilor, detectarea paginilor blocate și inventarul local al furnizorilor.
+
 - [API_DOCS.md](API_DOCS.md) — Structura completă a API-ului de backend, modele de date, exporturi și coduri de eroare.
 - [LANSARE.md](LANSARE.md) — Ghid pas cu pas pentru prima lansare, pregătirea modelelor și verificarea integrării Saga.
 - [Frontend README](frontend/README.md) — Arhitectura SPA, configurarea proxy-ului și testele de browser.

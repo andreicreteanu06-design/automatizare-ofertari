@@ -17,6 +17,7 @@ test('persistent conversation survives reload and submits version plus idempoten
     expect(p.request_id).toMatch(/^[a-f0-9-]{36}$/);
     expect(p.live_web).toBe(payloads.length > 1);
     const data = { answer: 'Cod: PART123; Masa: 12 kg [FT:1]', citations: [{ cite: '[FT:1]', doc_id: 'FT', page: 1 }], exact: [], grounded: true, verification_status: 'verified_excerpts', version: ++row.version, attempts: [{ attempt: 1 }] };
+    if (p.live_web) Object.assign(data, { evidence_status: 'unconfirmed', web_research: { pages: [{ url: 'https://supplier.example', access_status: 'blocked', stale: true, retrieved_at: '2026-10-14T10:00:00Z' }] } });
     row.messages.push({ role: 'user', text: p.query }, { role: 'assistant', data });
     return route.fulfill({ json: data });
   });
@@ -34,6 +35,9 @@ test('persistent conversation survives reload and submits version plus idempoten
   await page.getByRole('checkbox', { name: '🌍 Căutare Live Web (Perplexity)' }).check();
   await page.getByRole('button', { name: 'Trimite', exact: true }).click();
   await expect(page.locator('.answer-text')).toHaveCount(2);
+  await expect(page.getByText('Date tehnice:', { exact: false })).toContainText('neconfirmate');
+  await page.getByText('Acces web și actualitate', { exact: true }).click();
+  await expect(page.getByText('COPIE ISTORICĂ', { exact: false })).toBeVisible();
   expect(payloads[1].version).toBe(1);
   expect(payloads[1].request_id).not.toBe(payloads[0].request_id);
   await page.getByRole('button', { name: 'Conversație nouă', exact: true }).click();

@@ -617,4 +617,6 @@ Generează un draft de e-mail către furnizor (cerere de ofertă sau clarificăr
 
 ## Live Web RAG opțional
 
+Răspunsul include și `evidence_status` (`confirmed`, `unconfirmed`, `contradictory`), `technical_claims`, `missing_properties`, `automatic_offer_eligible=false` și `requires_human_review=true`. `web_research.access_status` și `web_research.pages` descriu accesul și copiile istorice (`stale`, `retrieved_at`). Aceste câmpuri sunt distincte de `verification_status`, care verifică fidelitatea citării. Criterii: [SOURCE_QUALITY.md](SOURCE_QUALITY.md).
+
 `POST /chat` acceptă `live_web: bool = false`. Checkbox-ul „🌍 Căutare Live Web (Perplexity)” activează căutarea externă pentru întrebarea curentă, filtrată prin Egress Guard. Istoricul nu este trimis către căutarea web. Citările web folosesc `[https://...]`; răspunsul include `live_web` și `web_research`. Serviciul Camoufox înlocuiește Playwright MCP. Arhitectură, contracte și limite: [Live Web RAG](LIVE_WEB.md).
