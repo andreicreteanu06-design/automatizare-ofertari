@@ -1,11 +1,29 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { LoaderCircle, Plus, Trash2 } from 'lucide-react';
 export const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Bucharest', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 export const identified = value => ({ ...value, _id: crypto.randomUUID() });
 export const stripId = ({ _id, ...value }) => value;
+function SuggestedField({ label, value, onChange, suggestions, ...props }) {
+  const [manual, setManual] = useState(false);
+  const id = useId();
+  const custom = manual || !suggestions.some(([code]) => code === value);
+  return <div className="field"><label className="field" htmlFor={id}><span>{label}</span></label><select id={id}
+    value={custom ? '__custom' : value}
+    disabled={props.disabled}
+    onChange={e => {
+      const isCustom = e.target.value === '__custom';
+      setManual(isCustom);
+      onChange(isCustom ? '' : e.target.value);
+    }}>
+    {suggestions.map(([code, name]) => <option key={code} value={code}>{name} · {code}</option>)}
+    <option value="__custom">Altă unitate…</option>
+  </select>{custom && <label className="field"><span>Unitate personalizată</span><input
+    value={value ?? ''} onChange={e => onChange(e.target.value)} {...props}
+    placeholder="Introdu unitatea" /></label>}</div>;
+}
 export function Field({ label, value, onChange, options, suggestions, ...props }) {
-  const listId = useId();
-  return <label className="field"><span>{label}</span>{options ? <select value={value} onChange={e => onChange(e.target.value)} {...props}>{options.map(o => <option key={typeof o === 'string' ? o : o[0]} value={typeof o === 'string' ? o : o[0]}>{typeof o === 'string' ? o : o[1]}</option>)}</select> : <><input list={suggestions ? listId : undefined} value={value ?? ''} onChange={e => onChange(e.target.value)} {...props} />{suggestions && <datalist id={listId}>{suggestions.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</datalist>}</>}</label>;
+  if (suggestions) return <SuggestedField label={label} value={value} onChange={onChange} suggestions={suggestions} {...props} />;
+  return <label className="field"><span>{label}</span>{options ? <select value={value} onChange={e => onChange(e.target.value)} {...props}>{options.map(o => <option key={typeof o === 'string' ? o : o[0]} value={typeof o === 'string' ? o : o[0]}>{typeof o === 'string' ? o : o[1]}</option>)}</select> : <input value={value ?? ''} onChange={e => onChange(e.target.value)} {...props} />}</label>;
 }
 export function Check({ label, value, onChange }) { return <label className="check"><input type="checkbox" checked={value} onChange={e => onChange(e.target.checked)} /><span>{label}</span></label>; }
 export function Button({ children, busy, secondary, ...props }) { return <button type="button" className={secondary ? 'btn secondary' : 'btn'} {...props}>{busy && <LoaderCircle size={16} className="animate-spin" />}{children}</button>; }
