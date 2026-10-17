@@ -2,6 +2,16 @@
 
 Interfață în română pentru API-ul descris în `../API_DOCS.md`. Chat-ul salvează conversațiile în Postgres și le restaurează după reîncărcare printr-un cookie HttpOnly. Ofertele și formularul e-mail păstrează starea doar în memoria paginii. Nu se salvează prețuri sau mesaje în localStorage.
 
+## Design și navigare
+
+Pagina `/` este landing-ul SculptureHero din referința furnizată, cu particule WebGL2, teme light/dark și imagine statică atunci când WebGL nu este disponibil. Linkurile `/#chat`, `/#offers` și `/#email` deschid direct zonele de lucru. Revenirea la landing prin logo păstrează formularele în memoria paginii.
+
+Chat-ul folosește BranchingReasoningChatInput, conectat la API-ul existent: istoricul, citările, tabelele de prețuri și opțiunea Live Web sunt păstrate. Cardurile reprezintă încercările efectiv raportate în `attempts`; nu sunt afișate scoruri inventate, răspunsuri demonstrative sau progres simulat. Textul întrebării rămâne disponibil după o eroare.
+
+Componentele reutilizabile sunt în `src/components/ui`, conform aliasului `@/components/ui` din Vite și TypeScript. `components.json` configurează structura compatibilă shadcn; nu este necesară regenerarea proiectului prin CLI. Fișierele existente JSX coexistă cu noile TSX, verificate prin `npm run typecheck`. Stilurile comune sunt în `src/styles.css`, iar stilurile SculptureHero în fișierul CSS de lângă componentă.
+
+Imaginile și fonturile sunt servite local. Nu sunt introduse excepții în CSP-ul Nginx; `assetsInlineLimit: 0` evită fonturile inline blocate de politica existentă. Atribuire: [UI_ATTRIBUTION.md](UI_ATTRIBUTION.md).
+
 ## Pornire prin Docker (recomandată)
 
 Din rădăcina proiectului, după configurarea serviciilor backend și a variabilelor din `.env`:

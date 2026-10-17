@@ -21,8 +21,9 @@ test('persistent conversation survives reload and submits version plus idempoten
     row.messages.push({ role: 'user', text: p.query }, { role: 'assistant', data });
     return route.fulfill({ json: data });
   });
-  await page.goto('/');
+  await page.goto('/#offers');
   await page.getByRole('button', { name: 'Chat tehnic', exact: true }).click();
+  await page.getByText('Conversații și proiect', { exact: false }).click();
   await page.getByLabel('Proiect', { exact: true }).fill('Tren A');
   await page.getByLabel('Întrebare tehnică').fill('Masa PART123?');
   await page.getByRole('button', { name: 'Trimite', exact: true }).click();
@@ -30,6 +31,7 @@ test('persistent conversation survives reload and submits version plus idempoten
   await page.reload();
   await page.getByRole('button', { name: 'Chat tehnic', exact: true }).click();
   await expect(page.locator('.answer-text')).toContainText('12 kg');
+  await page.getByText('Conversații și proiect', { exact: false }).click();
   await expect(page.getByLabel('Proiect', { exact: true })).toHaveValue('Tren A');
   await page.getByLabel('Întrebare tehnică').fill('Și lungimea?');
   await page.getByRole('checkbox', { name: '🌍 Căutare Live Web (Perplexity)' }).check();

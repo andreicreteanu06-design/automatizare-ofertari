@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BookOpen, Send, Sparkles } from 'lucide-react';
 import { api } from './api';
+import { BranchingReasoningChatInput } from './components/ui/branching-reasoning-chat-input';
 import { Button, Check, ErrorBox, Field, Table } from './ui';
 
 function Answer({ data, onRemember }) {
@@ -81,7 +82,7 @@ export default function Chat() {
     setConversation(null); setMessages([]); setReferences([]); setSelected(null); setError(''); setQuery(''); pending.current = null;
   }
   async function submit(e) {
-    e.preventDefault(); if (!query.trim() || busy || loading) return;
+    e?.preventDefault?.(); if (!query.trim() || busy || loading) return;
     const text = query.trim(); setBusy(true); setError('');
     try {
       let active = conversation;
@@ -105,15 +106,28 @@ export default function Chat() {
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
-  return <div className="space-y-5">
-    <section className="card"><div className="form-grid">
+  return <div className="technical-chat space-y-5">
+    <details className="card chat-settings"><summary>Conversații și proiect <span>Istoric salvat local în Postgres</span></summary><div className="form-grid mt-4">
       <Field label="Proiect" value={project} onChange={setProject} maxLength={200} disabled={!!conversation || busy || loading} />
       <Field label="Conversații salvate" value={conversation?.id || ''} onChange={open} disabled={busy || loading} options={[[ '', loading ? 'Se încarcă…' : 'Conversație nouă'], ...conversations.map(c => [c.id, `${c.project} · ${c.title}`])]} />
     </div><p className="text-xs mt-3">Istoricul este salvat în Postgres pentru acest browser. Nu există încă autentificare pe utilizatori; ștergerea cookie-ului pierde accesul din browser. Referințele salvate sunt repere pentru revizuire, nu dovezi noi.</p>
-    <div className="flex gap-3 mt-3"><Button secondary disabled={busy || loading} onClick={reset}>Conversație nouă</Button>{conversation && <Button secondary disabled={busy} onClick={() => open(conversation.id)}>Reîncarcă istoricul</Button>}</div></section>
-    <section className="card chat-card"><div className="card-heading"><div className="flex items-center gap-3"><span className="soft-icon"><Sparkles size={20} /></span><div><h2>Asistent tehnic · dovezi din surse</h2><p>Memorie persistentă și verificare extractivă</p></div></div><Field label="Fragmente inițiale" options={Array.from({ length: 10 }, (_, i) => String(i + 1))} value={k} onChange={setK} disabled={busy} /></div>
-    <div className="messages" role="log" aria-label="Mesaje chat" aria-live="polite">{!messages.length && <div className="chat-empty"><BookOpen size={30} className="mx-auto mb-4" /><h2>Cu ce te pot ajuta?</h2><p>Include codul articolului și proprietatea căutată, de exemplu: „Care este masa pentru 3EST-000-123?”.</p></div>}{messages.map((m, i) => <article key={i} className={`message ${m.role}`}><div className="message-author">{m.role === 'user' ? 'TU' : 'ASISTENT TEHNIC'}</div>{m.role === 'user' ? <p className="whitespace-pre-wrap">{m.text}</p> : <Answer data={m.data} onRemember={conversation && !busy ? e => { setSelected(e); setNote(''); } : null} />}</article>)}{busy && <p role="status" className="processing">Se consultă și verifică sursele… Maximum trei încercări; pe CPU poate dura câteva minute.</p>}<div ref={end} /></div>
-    <form className="composer" onSubmit={submit}><ErrorBox error={error} /><label htmlFor="chat-query" className="sr-only">Întrebare tehnică</label><textarea id="chat-query" required maxLength={1000} disabled={busy || loading} value={query} onChange={e => setQuery(e.target.value)} placeholder="Întreabă despre un articol sau continuă conversația…" rows={3} /><div className="mt-3"><Check label="🌍 Căutare Live Web (Perplexity)" value={liveWeb} onChange={setLiveWeb} /><p className="text-xs mt-2">Trimite doar întrebarea curentă spre căutarea web, după Egress Guard. Include explicit codul public; istoricul și documentele interne nu sunt trimise.</p></div><div className="composer-footer"><span>{query.length} / 1000 · Istoricul identifică articolul; documentele furnizează dovezile.</span><Button type="submit" disabled={busy || loading || !query.trim() || !project.trim()} busy={busy}><Send size={16} />Trimite</Button></div></form></section>
+    <div className="flex gap-3 mt-3"><Button secondary disabled={busy || loading} onClick={reset}>Conversație nouă</Button>{conversation && <Button secondary disabled={busy} onClick={() => open(conversation.id)}>Reîncarcă istoricul</Button>}</div></details>
+    <section className="chat-stage">
+      <div className="chat-stage-heading"><div><span className="eyebrow">ASISTENT TEHNIC</span><h2>Din surse. Cu precizie.</h2></div><Field label="Fragmente inițiale" options={Array.from({ length: 10 }, (_, i) => String(i + 1))} value={k} onChange={setK} disabled={busy} /></div>
+      <ErrorBox error={error} />
+      <BranchingReasoningChatInput
+        status={busy ? 'answering' : messages.length ? 'done' : 'idle'}
+        value={query} onValueChange={setQuery} onSubmit={() => submit()}
+        disabled={loading || !project.trim()} placeholder="Care este masa pentru PART123?"
+        branches={(busy ? [] : messages.filter(m => m.role === 'assistant').at(-1)?.data?.attempts || []).map(a => ({
+          id: String(a.attempt), title: `Căutare ${a.attempt}`,
+          note: ({ verified_excerpts: 'Pasaje selectate din surse.', no_matching_evidence: 'Nu au fost găsite dovezi potrivite.', invalid_selection: 'Selecția a necesitat reverificare.', conflicting_sources: 'Au fost găsite valori contradictorii.', insufficient_evidence: 'Dovezile nu au fost suficiente.', generation_timeout: 'Timpul de verificare a expirat.' })[a.outcome] || 'Verificare încheiată.',
+          chosen: a.outcome === 'verified_excerpts',
+        }))}
+        transcript={messages.length ? <div className="messages" role="log" aria-label="Mesaje chat" aria-live="polite">{messages.map((m, i) => <article key={i} className={`message ${m.role}`}><div className="message-author">{m.role === 'user' ? 'TU' : 'ASISTENT TEHNIC'}</div>{m.role === 'user' ? <p className="whitespace-pre-wrap">{m.text}</p> : <Answer data={m.data} onRemember={conversation && !busy ? e => { setSelected(e); setNote(''); } : null} />}</article>)}<div ref={end} /></div> : undefined}
+        footer={<div className="live-web-option"><Check label="🌍 Căutare Live Web (Perplexity)" value={liveWeb} onChange={setLiveWeb} /><p>Doar întrebarea curentă este trimisă spre web, după Egress Guard. {query.length}/1000</p></div>}
+      />
+    </section>
     {selected && <form className="card" onSubmit={remember}><h2>Notă de revizuire</h2><p>{selected.quote}</p><label className="field mt-3"><span>Observație / corecție propusă (nu devine automat fapt verificat)</span><textarea maxLength={1000} value={note} onChange={e => setNote(e.target.value)} rows={3} /></label><Button type="submit" disabled={busy}>Salvează referința</Button></form>}
     {!!references.length && <section className="card"><h2>Referințe păstrate pentru acest proiect / conversație</h2>{references.map(r => <div className="line-card mt-3" key={r.id}><strong>{r.evidence.doc_id} · p. {r.evidence.page}</strong><p>{r.evidence.quote}</p><p className="whitespace-pre-wrap">{r.note}</p><small>Referință istorică; poate necesita reverificare după actualizarea documentului.</small></div>)}</section>}
   </div>;

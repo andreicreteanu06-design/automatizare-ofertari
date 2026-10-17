@@ -29,7 +29,7 @@ test('compliance, snapshot freshness, all binary exports, server 409', async ({ 
     requests.push(route.request().postDataJSON());
     return failExport ? route.fulfill({ status: 409, json: { detail: { error: 'Export refuzat', failures: [{ code: 'CERT_EXPIRED', message: 'Certificat expirat.' }] } } }) : route.fulfill({ contentType: 'application/octet-stream', headers: { 'content-disposition': 'attachment; filename="test.bin"' }, body: Buffer.from([1, 2, 3, 4]) });
   });
-  await page.goto('/');
+  await page.goto('/#offers');
   const word = page.getByRole('button', { name: 'Ofertă Word' });
   await expect(word).toBeDisabled();
   await fillOffer(page);
@@ -65,7 +65,7 @@ test('compliance, snapshot freshness, all binary exports, server 409', async ({ 
 });
 test('invoice selection preserves quantity and decimal precision', async ({ page }) => {
   await page.route('**/api/prices?*', route => route.fulfill({ json: { history: [{ name: 'Suport', supplier: 'Feroparts', invoice_number: 'F1', issue_date: '2026-10-01', net_unit_price: '549.123456', currency: 'EUR' }] } }));
-  await page.goto('/');
+  await page.goto('/#offers');
   await page.getByLabel('Cod articol', { exact: true }).first().fill('3EST-000-123');
   await page.getByLabel('Cantitate', { exact: true }).fill('4');
   await page.getByRole('button', { name: 'Caută preț în facturi' }).click();
@@ -76,7 +76,7 @@ test('invoice selection preserves quantity and decimal precision', async ({ page
 });
 test('chat renders citations, invoice table and untrusted content as text', async ({ page }) => {
   await page.route('**/api/chat', route => route.fulfill({ json: { answer: '12 kg [FT:3] <img src=x onerror=alert(1)>', grounded: false, citations: [{ cite: '[FT:3]', doc_id: 'FT', page: 3, supplier: 'Furnizor', doc_type: 'Fișă tehnică' }], removed_codes: ['UNKNOWN'], exact: [{ seller_code: 'P1', name: 'Piesă', supplier: 'Furnizor', invoice_number: 'F1', issue_date: '2026-10-01', quantity: '4', unit_code: 'H87', unit_price: '555.000000', net_unit_price: '549.000000', currency: 'EUR' }] } }));
-  await page.goto('/');
+  await page.goto('/#offers');
   await page.getByRole('button', { name: 'Chat tehnic' }).click();
   await page.getByLabel('Întrebare tehnică').fill('Detalii P1');
   await page.getByRole('button', { name: 'Trimite', exact: true }).click();
@@ -97,7 +97,7 @@ test('email clarification payload, translated preview and gateway error', async 
     expect(body.items[0].quantity).toBeNull();
     return fail ? route.fulfill({ status: 503, json: { detail: 'Egress Guard indisponibil' } }) : route.fulfill({ json: { language: 'de', translated: true, subject: 'Technische Anfrage', body: 'Guten Tag\nP1' } });
   });
-  await page.goto('/');
+  await page.goto('/#offers');
   await page.getByRole('button', { name: 'Draft e-mail' }).click();
   await page.getByLabel('Tip e-mail').selectOption('clarification');
   await page.getByLabel('Limba mesajului').selectOption('de');
@@ -115,7 +115,7 @@ test('email clarification payload, translated preview and gateway error', async 
 });
 test('mobile layout fits viewport and tabs retain state', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await page.goto('/#offers');
   await page.getByLabel('Număr ofertă', { exact: true }).fill('OF-1');
   for (const name of ['Chat tehnic', 'Draft e-mail', 'Generator oferte']) {
     await page.getByRole('button', { name, exact: true }).click();
