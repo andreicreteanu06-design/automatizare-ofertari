@@ -5,6 +5,7 @@ import Chat from './Chat';
 import Offers from './Offers';
 import Email from './Email';
 import './styles.css';
+import './workspace.css';
 import SculptureHero from './components/ui/liquid-sculpture-hero';
 import '@fontsource/geist/400.css';
 import '@fontsource/geist/500.css';
@@ -12,9 +13,9 @@ import '@fontsource/geist/600.css';
 import '@fontsource/instrument-serif/400-italic.css';
 
 const tabs = [
-  { id: 'offers', label: 'Generator oferte', icon: FileText, eyebrow: 'OFERTARE & SAGA', title: 'De la articol la ofertă.', description: 'Construiește oferta, verifică cerințele și pregătește documentele.' },
+  { id: 'offers', label: 'Generator oferte', icon: FileText, eyebrow: 'OFERTARE & SAGA', title: 'Pregătește o ofertă.', description: 'Construiește oferta, verifică cerințele și pregătește documentele.' },
   { id: 'chat', label: 'Chat tehnic', icon: MessageSquareText, eyebrow: 'ASISTENT TEHNIC · RAG', title: 'Răspunsuri cu surse.', description: 'Caută informații tehnice și prețuri în documentele interne.' },
-  { id: 'email', label: 'Draft e-mail', icon: Mail, eyebrow: 'COMUNICARE CU FURNIZORII', title: 'Un mesaj. 27 de limbi.', description: 'Pregătește cereri de ofertă și clarificări tehnice pentru furnizori.' },
+  { id: 'email', label: 'Draft e-mail', icon: Mail, eyebrow: 'COMUNICARE CU FURNIZORII', title: 'Scrie furnizorului.', description: 'Pregătește cereri de ofertă și clarificări tehnice pentru furnizori.' },
 ];
 function App() {
   const initial = () => ['offers', 'chat', 'email'].includes(location.hash.slice(1).split('?')[0]) ? location.hash.slice(1).split('?')[0] : 'home';

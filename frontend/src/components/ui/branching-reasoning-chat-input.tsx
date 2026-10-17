@@ -243,7 +243,7 @@ export function BranchingReasoningChatInput({
             disabled={disabled || (busy ? !onStop : !inputValue.trim() || !onSubmit)}
             onClick={busy ? (event) => { event.preventDefault(); onStop?.(); } : undefined}
             className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-30">
-            {busy ? <Square className="size-3 fill-current" aria-hidden="true" /> : <ArrowUp className="size-4" aria-hidden="true" />}
+            {busy ? <Square className="size-3 fill-current" aria-hidden="true" /> : <ArrowUp className="size-4" aria-hidden="true" />}<span>{busy ? "Se verifică…" : "Trimite"}</span>
           </button>
         </div>
         {footer}

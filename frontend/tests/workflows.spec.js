@@ -47,6 +47,7 @@ test('compliance, snapshot freshness, all binary exports, server 409', async ({ 
   await expect(word).toBeDisabled();
   await page.getByRole('button', { name: 'Calculează oferta' }).click();
   await expect(word).toBeEnabled();
+  await page.locator('.saga-options > summary').click();
   await page.getByLabel('CUI / CIF client').fill('RO12345674');
   await page.getByLabel('Serie și număr document').fill('OFT 1');
   for (const name of ['Ofertă Word', 'Calcul intern Excel', 'Import Saga']) {

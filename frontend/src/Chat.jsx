@@ -107,13 +107,14 @@ export default function Chat() {
     finally { setBusy(false); }
   }
   return <div className="technical-chat space-y-5">
-    <details className="card chat-settings"><summary>Conversații și proiect <span>Istoric salvat local în Postgres</span></summary><div className="form-grid mt-4">
+    <details className="card chat-settings"><summary>Conversații și proiect <span>Istoric și setări de căutare</span></summary><div className="form-grid mt-4">
+      <Field label="Fragmente inițiale" options={Array.from({ length: 10 }, (_, i) => String(i + 1))} value={k} onChange={setK} disabled={busy} />
       <Field label="Proiect" value={project} onChange={setProject} maxLength={200} disabled={!!conversation || busy || loading} />
       <Field label="Conversații salvate" value={conversation?.id || ''} onChange={open} disabled={busy || loading} options={[[ '', loading ? 'Se încarcă…' : 'Conversație nouă'], ...conversations.map(c => [c.id, `${c.project} · ${c.title}`])]} />
-    </div><p className="text-xs mt-3">Istoricul este salvat în Postgres pentru acest browser. Nu există încă autentificare pe utilizatori; ștergerea cookie-ului pierde accesul din browser. Referințele salvate sunt repere pentru revizuire, nu dovezi noi.</p>
+    </div><p className="text-xs mt-3">Conversațiile sunt păstrate pentru acest browser. Nu există încă autentificare pe utilizatori; ștergerea cookie-ului pierde accesul din browser. Referințele salvate sunt repere pentru revizuire, nu dovezi noi.</p>
     <div className="flex gap-3 mt-3"><Button secondary disabled={busy || loading} onClick={reset}>Conversație nouă</Button>{conversation && <Button secondary disabled={busy} onClick={() => open(conversation.id)}>Reîncarcă istoricul</Button>}</div></details>
     <section className="chat-stage">
-      <div className="chat-stage-heading"><div><span className="eyebrow">ASISTENT TEHNIC</span><h2>Din surse. Cu precizie.</h2></div><Field label="Fragmente inițiale" options={Array.from({ length: 10 }, (_, i) => String(i + 1))} value={k} onChange={setK} disabled={busy} /></div>
+      <div className="chat-stage-heading"><div><h2>Întreabă despre documentele tale.</h2><p>Scrie întrebarea. Consultă răspunsul și sursele indicate.</p></div></div>
       <ErrorBox error={error} />
       <BranchingReasoningChatInput
         status={busy ? 'answering' : messages.length ? 'done' : 'idle'}
