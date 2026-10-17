@@ -36,7 +36,7 @@ class MemoryStore:
 
     def list(self, owner):
         with self.connect() as conn:
-            return conn.execute('SELECT id,project,title,version,updated_at FROM chat_conversation WHERE owner_hash=%s ORDER BY updated_at DESC LIMIT 100', (owner,)).fetchall()
+            return conn.execute('SELECT id,project,title,version,updated_at FROM chat_conversation WHERE owner_hash=%s ORDER BY updated_at DESC', (owner,)).fetchall()
 
     def load(self, owner, cid):
         with self.connect() as conn:

@@ -120,10 +120,15 @@ services:
       DOCLING_ARTIFACTS_PATH: /models/docling
     volumes: &backend-volumes
       - ./data/inbox:/data/inbox
+      - ${CLIENT_DOCUMENTS_PATH:-./data/client-files}:/data/client-files:ro
+      - ./data/source-uploads:/data/source-uploads
+      - ./data/source-state:/data/source-state
+      - ./data/drive-mirror:/data/drive-mirror:ro
+      - ./data/drive-config:/data/drive-config
       - ./data/hf-cache:/root/.cache/huggingface:ro
       - ./data/docling-models:/models/docling:ro
       - ./data/reranker:/models/reranker:ro
-    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000"]
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000", --no-access-log]
     mem_limit: ${BACKEND_MEMORY_LIMIT:-3g}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
@@ -170,6 +175,34 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       qdrant: { condition: service_started }
+    restart: unless-stopped
+
+  source-watch:
+    build: ./backend
+    image: ofertare-backend
+    networks: [internal]
+    command: [python, -m, app.ingest.source_watch]
+    environment: *backend-env
+    volumes: *backend-volumes
+    mem_limit: 5g
+    depends_on:
+      qdrant: { condition: service_started }
+    restart: unless-stopped
+
+  drive-sync:
+    profiles: [drive]
+    build:
+      context: .
+      dockerfile: drive_sync/Dockerfile
+    networks: [egress]
+    environment:
+      DENYLIST_PATH: /config/denylist.yaml
+    volumes:
+      - ./data/drive-config:/config/drive-sources:ro
+      - ./data/drive-mirror:/mirror
+      - ./secrets/google-drive.json:/secrets/drive.json:ro
+      - ./config/denylist.yaml:/config/denylist.yaml:ro
+    mem_limit: 512m
     restart: unless-stopped
 
   # Descarcă modelele publice o singură dată. Nu montează nimic intern în afară de

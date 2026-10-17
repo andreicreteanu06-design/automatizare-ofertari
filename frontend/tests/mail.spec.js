@@ -11,6 +11,7 @@ test.beforeEach(async ({ page }) => {
 
 async function draft(page) {
   await page.goto('/#email');
+  await page.getByText('Semnătura expeditorului', { exact: true }).click();
   await page.getByLabel('Numele expeditorului').fill('Ion');
   await page.getByLabel('Compania expeditorului').fill('Firma');
   await page.locator('.email-layout').getByLabel('Cod articol').fill('P1');

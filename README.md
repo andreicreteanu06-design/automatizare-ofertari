@@ -89,3 +89,4 @@ Instalarea este destinată unei infrastructuri controlate de client, cu Docker �
 - [Frontend README](frontend/README.md) — Arhitectura SPA, configurarea proxy-ului și testele de browser.
 
 - [EMAIL_CONNECT.md](EMAIL_CONNECT.md) — conectare Google/Microsoft și trimiterea explicită a drafturilor.
+Foldere monitorizate și Google Drive: [DOCUMENT_SOURCES.md](DOCUMENT_SOURCES.md).

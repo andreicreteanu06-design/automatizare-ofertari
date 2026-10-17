@@ -27,7 +27,7 @@ test('persistent conversation survives reload and submits version plus idempoten
   });
   await page.goto('/#offers');
   await page.getByRole('button', { name: 'Chat tehnic', exact: true }).click();
-  await page.getByText('Conversații și proiect', { exact: false }).click();
+  await page.getByText('Setări de căutare', { exact: false }).click();
   await page.getByLabel('Proiect', { exact: true }).fill('Tren A');
   await page.getByLabel('Întrebare tehnică').fill('Masa PART123?');
   await page.getByRole('button', { name: 'Trimite', exact: true }).click();
@@ -35,10 +35,10 @@ test('persistent conversation survives reload and submits version plus idempoten
   await page.reload();
   await page.getByRole('button', { name: 'Chat tehnic', exact: true }).click();
   await expect(page.locator('.answer-text')).toContainText('12 kg');
-  await page.getByText('Conversații și proiect', { exact: false }).click();
+  await page.getByText('Setări de căutare', { exact: false }).click();
   await expect(page.getByLabel('Proiect', { exact: true })).toHaveValue('Tren A');
   await page.getByLabel('Întrebare tehnică').fill('Și lungimea?');
-  await page.getByRole('checkbox', { name: '🌍 Căutare Live Web (Perplexity)' }).check();
+  await page.getByRole('checkbox', { name: 'Cautare Live' }).check();
   await page.getByRole('button', { name: 'Trimite', exact: true }).click();
   await expect(page.locator('.answer-text')).toHaveCount(2);
   await expect(page.getByText('Date tehnice:', { exact: false })).toContainText('neconfirmate');
@@ -48,6 +48,6 @@ test('persistent conversation survives reload and submits version plus idempoten
   expect(payloads[1].request_id).not.toBe(payloads[0].request_id);
   await page.getByRole('button', { name: 'Conversație nouă', exact: true }).click();
   await expect(page.locator('.answer-text')).toHaveCount(0);
-  await page.getByLabel('Conversații salvate').selectOption(row.id);
+  await page.getByRole('navigation', { name: 'Conversații salvate' }).getByRole('button', { name: /Masa PART123/ }).click();
   await expect(page.locator('.answer-text')).toHaveCount(2);
 });

@@ -624,3 +624,4 @@ Răspunsul include și `evidence_status` (`confirmed`, `unconfirmed`, `contradic
 ## Conectare și trimitere e-mail
 
 Endpoint-urile OAuth și `POST /emails/send` sunt documentate în [EMAIL_CONNECT.md](EMAIL_CONNECT.md). Trimiterea necesită confirmare explicită și verificare Egress Guard; `accepted` indică acceptarea de către furnizor, nu livrarea.
+Biblioteca de documente: endpoint-urile /sources și configurarea sincronizării sunt descrise în [DOCUMENT_SOURCES.md](DOCUMENT_SOURCES.md).

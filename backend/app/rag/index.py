@@ -76,5 +76,12 @@ def vector_search(client, embedder, query, k=5):
         prefetch.append(models.Prefetch(query=_sparse(sparse), using=SPARSE, limit=k * 4))
     res = client.query_points(COLLECTION, prefetch=prefetch, query=models.FusionQuery(fusion=models.Fusion.RRF),
                               limit=k, with_payload=True)
+    from app.sources import current_document
+    freshness = {}
+    for point in res.points:
+        payload = point.payload
+        key = (payload["doc_id"], payload.get("source_revision"))
+        if key not in freshness:
+            freshness[key] = current_document(*key)
     return [{**p.payload, "score": p.score, "cite": f"[{p.payload['doc_id']}:{p.payload['page']}]"}
-            for p in res.points]
+            for p in res.points if freshness[(p.payload["doc_id"], p.payload.get("source_revision"))]]

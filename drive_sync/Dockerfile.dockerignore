@@ -1,0 +1,5 @@
+**
+!drive_sync
+!drive_sync/sync.py
+!research_gateway
+!research_gateway/egress_guard.py

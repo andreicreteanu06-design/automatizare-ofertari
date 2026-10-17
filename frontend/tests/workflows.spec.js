@@ -25,6 +25,7 @@ test('compliance, snapshot freshness, all binary exports, server 409', async ({ 
   await page.route('**/api/offers/calculate', route => {
     const payload = route.request().postDataJSON();
     expect(typeof payload.markup_percent).toBe('string');
+    expect(payload.fx_date).toBe(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Bucharest', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()));
     expect(typeof payload.lines[0].quantity).toBe('string');
     expect(payload.lines[0]._id).toBeUndefined();
     return route.fulfill({ json: result(ok) });
@@ -106,6 +107,7 @@ test('email clarification payload, translated preview and gateway error', async 
   await page.getByRole('button', { name: 'Draft e-mail' }).click();
   await page.getByLabel('Tip e-mail').selectOption('clarification');
   await page.getByLabel('Limba mesajului').selectOption('de');
+  await page.getByText('Semnătura expeditorului', { exact: true }).click();
   await page.getByLabel('Numele expeditorului').fill('Ion');
   await page.getByLabel('Compania expeditorului').fill('Firma SRL');
   await page.locator('.email-layout').getByLabel('Cod articol').fill('P1');

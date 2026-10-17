@@ -107,12 +107,15 @@ export default function Chat() {
     finally { setBusy(false); }
   }
   return <div className="technical-chat space-y-5">
-    <details className="card chat-settings"><summary>Conversații și proiect <span>Istoric și setări de căutare</span></summary><div className="form-grid mt-4">
-      <Field label="Fragmente inițiale" options={Array.from({ length: 10 }, (_, i) => String(i + 1))} value={k} onChange={setK} disabled={busy} />
+    <section className="card conversation-history" aria-label="Conversații precedente">
+      <div className="card-heading"><h2>Conversațiile tale</h2><Button secondary disabled={busy || loading} onClick={reset}>Conversație nouă</Button></div>
+      <nav className="conversation-bar" aria-label="Conversații salvate">{conversations.map(c => <button type="button" key={c.id} aria-current={conversation?.id === c.id ? 'true' : undefined} disabled={busy || loading} onClick={() => open(c.id)}><strong>{c.title}</strong><small>{c.project}</small></button>)}</nav>
+      {!conversations.length && <p>{loading ? 'Se încarcă istoricul…' : 'Conversațiile vor apărea aici după prima întrebare.'}</p>}
+    <details className="chat-settings"><summary>Setări de căutare · opțional</summary><div className="form-grid mt-4">
       <Field label="Proiect" value={project} onChange={setProject} maxLength={200} disabled={!!conversation || busy || loading} />
-      <Field label="Conversații salvate" value={conversation?.id || ''} onChange={open} disabled={busy || loading} options={[[ '', loading ? 'Se încarcă…' : 'Conversație nouă'], ...conversations.map(c => [c.id, `${c.project} · ${c.title}`])]} />
-    </div><p className="text-xs mt-3">Conversațiile sunt păstrate pentru acest browser. Nu există încă autentificare pe utilizatori; ștergerea cookie-ului pierde accesul din browser. Referințele salvate sunt repere pentru revizuire, nu dovezi noi.</p>
-    <div className="flex gap-3 mt-3"><Button secondary disabled={busy || loading} onClick={reset}>Conversație nouă</Button>{conversation && <Button secondary disabled={busy} onClick={() => open(conversation.id)}>Reîncarcă istoricul</Button>}</div></details>
+      <Field label="Fragmente inițiale" options={Array.from({ length: 10 }, (_, i) => String(i + 1))} value={k} onChange={setK} disabled={busy} />
+    </div><p className="text-xs mt-3">Istoricul este asociat acestui browser. Ștergerea cookie-ului pierde accesul. Referințele salvate necesită reverificare în surse.</p></details>
+    </section>
     <section className="chat-stage">
       <div className="chat-stage-heading"><div><h2>Întreabă despre documentele tale.</h2><p>Scrie întrebarea. Consultă răspunsul și sursele indicate.</p></div></div>
       <ErrorBox error={error} />
@@ -126,7 +129,7 @@ export default function Chat() {
           chosen: a.outcome === 'verified_excerpts',
         }))}
         transcript={messages.length ? <div className="messages" role="log" aria-label="Mesaje chat" aria-live="polite">{messages.map((m, i) => <article key={i} className={`message ${m.role}`}><div className="message-author">{m.role === 'user' ? 'TU' : 'ASISTENT TEHNIC'}</div>{m.role === 'user' ? <p className="whitespace-pre-wrap">{m.text}</p> : <Answer data={m.data} onRemember={conversation && !busy ? e => { setSelected(e); setNote(''); } : null} />}</article>)}<div ref={end} /></div> : undefined}
-        footer={<div className="live-web-option"><Check label="🌍 Căutare Live Web (Perplexity)" value={liveWeb} onChange={setLiveWeb} /><p>Doar întrebarea curentă este trimisă spre web, după Egress Guard. {query.length}/1000</p></div>}
+        footer={<div className="live-web-option"><Check label="Cautare Live" value={liveWeb} onChange={setLiveWeb} /><p>Doar întrebarea curentă este trimisă spre web, după Egress Guard. {query.length}/1000</p></div>}
       />
     </section>
     {selected && <form className="card" onSubmit={remember}><h2>Notă de revizuire</h2><p>{selected.quote}</p><label className="field mt-3"><span>Observație / corecție propusă (nu devine automat fapt verificat)</span><textarea maxLength={1000} value={note} onChange={e => setNote(e.target.value)} rows={3} /></label><Button type="submit" disabled={busy}>Salvează referința</Button></form>}

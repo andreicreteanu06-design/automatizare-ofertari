@@ -34,23 +34,24 @@ export function MailAccounts({ accounts, refresh, error, loading }) {
     })}</div><p className="note mt-4">Acces pentru trimitere. Citirea și triajul atașamentelor se configurează separat prin IMAP. După autorizare, revino în acest tab.</p><ErrorBox error={failure || error}/>{location.hash.includes('oauth=connected') && <p role="status">Cont conectat. Poți reveni în tabul în care pregăteai mesajul.</p>}{location.hash.includes('oauth=error') && <ErrorBox error="Conectarea nu a fost finalizată. Reia autorizarea contului."/>}</section>;
 }
 
-export function MailSend({ draft, accounts }) {
+export function MailSend({ draft, accounts, to }) {
   const [provider, setProvider] = useState('');
-  const [to, setTo] = useState('');
+  useEffect(() => { setConfirmed(false); }, [to]);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState('');
+  const [attemptedRecipient, setAttemptedRecipient] = useState('');
   const [requestId] = useState(() => crypto.randomUUID());
   const connected = accounts.filter(a => a.connected);
   const selected = connected.find(a => a.provider === provider);
   async function send(e) {
-    e.preventDefault(); setBusy(true); setError('');
+    e.preventDefault(); setBusy(true); setError(''); setAttemptedRecipient(to);
     try { const response = await api('/emails/send', { provider, to, subject: draft.subject, body: draft.body, confirmed, request_id: requestId }); setResult(response.status); }
     catch (e) { setError(e.message); setResult(e.status && e.status < 500 ? '' : 'unknown'); }
     finally { setBusy(false); }
   }
-  return <form className="mail-send" onSubmit={send}><h3>Trimite mesajul</h3><fieldset disabled={busy || !!result} className="space-y-4"><Field label="Trimite din contul" value={provider} onChange={v => { setProvider(v); setConfirmed(false); }} options={ [['', 'Alege contul conectat'], ...connected.map(a => [a.provider, a.email])] } required/><Field label="Destinatar" type="email" required maxLength={254} value={to} onChange={v => { setTo(v); setConfirmed(false); }} placeholder="achizitii@furnizor.ro"/><label className="check"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)}/><span>Am verificat destinatarul și mesajul de mai sus și confirm trimiterea.</span></label><Button type="submit" busy={busy} disabled={!selected || !confirmed || !to || busy || !!result}><Send size={16}/>{busy ? 'Se trimite…' : 'Trimite e-mailul'}</Button></fieldset>{!connected.length && <p className="note mt-4">Conectează Google sau Microsoft pentru a trimite din aplicație.</p>}<ErrorBox error={error}/>{result && <p role="status" className="note mt-4">{result === 'accepted' ? 'Mesaj acceptat de furnizor pentru trimitere. Livrarea în inbox nu este încă confirmată.' : result === 'rejected' ? 'Furnizorul a refuzat trimiterea. Verifică permisiunile contului înainte de a pregăti un nou mesaj.' : 'Rezultat neconfirmat. Verifică folderul Trimise înainte de a pregăti un nou mesaj. Nu retrimitem automat.'}</p>}</form>;
+  return <form className="mail-send" onSubmit={send}><h3>Trimite mesajul</h3><fieldset disabled={busy || !!result} className="space-y-4"><Field label="Trimite din contul" value={provider} onChange={v => { setProvider(v); setConfirmed(false); }} options={ [['', 'Alege contul conectat'], ...connected.map(a => [a.provider, a.email])] } required/><p className="send-recipient">Destinatar: {to || 'Completează adresa în formularul de mai sus.'}</p><label className="check"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)}/><span>Am verificat destinatarul și mesajul de mai sus și confirm trimiterea.</span></label><Button type="submit" busy={busy} disabled={!selected || !confirmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to) || busy || !!result}><Send size={16}/>{busy ? 'Se trimite…' : 'Trimite e-mailul'}</Button></fieldset>{!connected.length && <p className="note mt-4">Conectează Google sau Microsoft pentru a trimite din aplicație.</p>}<ErrorBox error={error}/>{result && <p role="status" className="note mt-4">Destinatarul încercării: {attemptedRecipient}. {result === 'accepted' ? 'Mesaj acceptat de furnizor pentru trimitere. Livrarea în inbox nu este încă confirmată.' : result === 'rejected' ? 'Furnizorul a refuzat trimiterea. Verifică permisiunile contului înainte de a pregăti un nou mesaj.' : 'Rezultat neconfirmat. Verifică folderul Trimise înainte de a pregăti un nou mesaj. Nu retrimitem automat.'}</p>}</form>;
 }
 
 export function useMailAccounts() {

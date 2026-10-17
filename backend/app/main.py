@@ -31,6 +31,8 @@ from app.mail_accounts import router as mail_accounts_router
 app.include_router(mail_accounts_router)
 app.include_router(email_router)
 app.include_router(memory_router)
+from app.sources import router as sources_router
+app.include_router(sources_router)
 
 
 @app.exception_handler(psycopg.Error)
