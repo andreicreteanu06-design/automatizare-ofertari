@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, Send, Sparkles } from 'lucide-react';
+import { BookOpen, ArrowUpRight, MessageSquareText, Plus } from 'lucide-react';
 import { api } from './api';
+import './chat.css';
 import { BranchingReasoningChatInput } from './components/ui/branching-reasoning-chat-input';
 import { Button, Check, ErrorBox, Field, Table } from './ui';
 
@@ -50,6 +51,8 @@ export default function Chat() {
   const [error, setError] = useState('');
   const pending = useRef(null);
   const end = useRef(null);
+  const stage = useRef(null);
+  function suggest(text) { setQuery(text); stage.current?.querySelector('textarea')?.focus(); }
   const applyConversation = data => {
     setConversation(data); setMessages(data.messages || []); setReferences(data.references || []);
     setProject(data.project); setSelected(null); setNote('');
@@ -106,9 +109,9 @@ export default function Chat() {
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
-  return <div className="technical-chat space-y-5">
+  return <div className="technical-chat chat-focus" data-has-messages={messages.length > 0}>
     <section className="card conversation-history" aria-label="Conversații precedente">
-      <div className="card-heading"><h2>Conversațiile tale</h2><Button secondary disabled={busy || loading} onClick={reset}>Conversație nouă</Button></div>
+      <div className="card-heading"><h2><MessageSquareText size={17} aria-hidden="true"/>Conversațiile tale</h2><Button secondary disabled={busy || loading} onClick={reset}><Plus size={17} aria-hidden="true"/>Conversație nouă</Button></div>
       <nav className="conversation-bar" aria-label="Conversații salvate">{conversations.map(c => <button type="button" key={c.id} aria-current={conversation?.id === c.id ? 'true' : undefined} disabled={busy || loading} onClick={() => open(c.id)}><strong>{c.title}</strong><small>{c.project}</small></button>)}</nav>
       {!conversations.length && <p>{loading ? 'Se încarcă istoricul…' : 'Conversațiile vor apărea aici după prima întrebare.'}</p>}
     <details className="chat-settings"><summary>Setări de căutare · opțional</summary><div className="form-grid mt-4">
@@ -116,8 +119,8 @@ export default function Chat() {
       <Field label="Fragmente inițiale" options={Array.from({ length: 10 }, (_, i) => String(i + 1))} value={k} onChange={setK} disabled={busy} />
     </div><p className="text-xs mt-3">Istoricul este asociat acestui browser. Ștergerea cookie-ului pierde accesul. Referințele salvate necesită reverificare în surse.</p></details>
     </section>
-    <section className="chat-stage">
-      <div className="chat-stage-heading"><div><h2>Întreabă despre documentele tale.</h2><p>Scrie întrebarea. Consultă răspunsul și sursele indicate.</p></div></div>
+    <section className="chat-stage" ref={stage} aria-label="Asistent tehnic">
+      <div className="chat-stage-heading"><div><div className="chat-signature"><BookOpen size={18} aria-hidden="true"/><span>Asistentul tău tehnic</span></div><h2>Documentele tale.<br/><em>Răspunsuri cu surse.</em></h2><p>Întreabă despre o piesă, o specificație sau un preț.</p></div></div>
       <ErrorBox error={error} />
       <BranchingReasoningChatInput
         status={busy ? 'answering' : messages.length ? 'done' : 'idle'}
@@ -131,6 +134,7 @@ export default function Chat() {
         transcript={messages.length ? <div className="messages" role="log" aria-label="Mesaje chat" aria-live="polite">{messages.map((m, i) => <article key={i} className={`message ${m.role}`}><div className="message-author">{m.role === 'user' ? 'TU' : 'ASISTENT TEHNIC'}</div>{m.role === 'user' ? <p className="whitespace-pre-wrap">{m.text}</p> : <Answer data={m.data} onRemember={conversation && !busy ? e => { setSelected(e); setNote(''); } : null} />}</article>)}<div ref={end} /></div> : undefined}
         footer={<div className="live-web-option"><Check label="Cautare Live" value={liveWeb} onChange={setLiveWeb} /><p>Doar întrebarea curentă este trimisă spre web, după Egress Guard. {query.length}/1000</p></div>}
       />
+      {!messages.length && <div className="chat-starters" aria-label="Idei de întrebări"><span>Începe cu</span><button type="button" disabled={busy || loading} onClick={() => suggest('Care sunt specificațiile tehnice pentru ')}>Date tehnice <ArrowUpRight size={16} aria-hidden="true"/></button><button type="button" disabled={busy || loading} onClick={() => suggest('Ce prețuri apar în facturi pentru ')}>Prețuri din facturi <ArrowUpRight size={16} aria-hidden="true"/></button></div>}
     </section>
     {selected && <form className="card" onSubmit={remember}><h2>Notă de revizuire</h2><p>{selected.quote}</p><label className="field mt-3"><span>Observație / corecție propusă (nu devine automat fapt verificat)</span><textarea maxLength={1000} value={note} onChange={e => setNote(e.target.value)} rows={3} /></label><Button type="submit" disabled={busy}>Salvează referința</Button></form>}
     {!!references.length && <section className="card"><h2>Referințe păstrate pentru acest proiect / conversație</h2>{references.map(r => <div className="line-card mt-3" key={r.id}><strong>{r.evidence.doc_id} · p. {r.evidence.page}</strong><p>{r.evidence.quote}</p><p className="whitespace-pre-wrap">{r.note}</p><small>Referință istorică; poate necesita reverificare după actualizarea documentului.</small></div>)}</section>}

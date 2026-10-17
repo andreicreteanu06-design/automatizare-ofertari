@@ -36,6 +36,10 @@ test('mobile landing and chat fit with reduced motion and no WebGL', async ({ pa
   await expect(page.getByLabel('Întrebare tehnică')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391);
   await page.screenshot({ path: 'test-results/chat-mobile.png', fullPage: true });
+  await page.getByRole('button', { name: 'Date tehnice', exact: true }).click();
+  await expect(page.getByLabel('Întrebare tehnică')).toHaveValue('Care sunt specificațiile tehnice pentru ');
+  await expect(page.getByLabel('Întrebare tehnică')).toBeFocused();
+  await expect(page.locator('.message.user')).toHaveCount(0);
 });
 
 test('chat cards use backend attempts without demo scores and retain failed drafts', async ({ page }) => {
