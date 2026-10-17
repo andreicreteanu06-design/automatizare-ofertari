@@ -235,3 +235,15 @@ def test_bnr_snapshot_rejects_bad_payload(monkeypatch):
     t = httpx.MockTransport(lambda r: httpx.Response(200, json={"date": "2026-10-10", "rates": {}}))
     with pytest.raises(FxError):
         asyncio.run(bnr_snapshot(date(2026, 10, 11), transport=t))
+
+
+def test_cny_purchase_and_transport_use_snapshot_not_assumed_rate():
+    fx = FxSnapshot(date(2026, 10, 13), {"EUR": D("5"), "CNY": D("0.65")})
+    line = OfferLine(**{**LINE_A, "quantity": "2", "unit_price": "100", "price_currency": "CNY",
+                        "transport_cost": "20", "transport_currency": "CNY"})
+    result = calc_line(line, fx, D("20"))
+    assert result.price_eur == D("13")
+    assert result.transport_eur == D("1.3")
+    assert result.sale_total_eur == D("34.32")
+    with pytest.raises(FxError, match="CNY"):
+        calc_line(line, FX, D("20"))

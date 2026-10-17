@@ -452,7 +452,7 @@ Generează un draft de e-mail către furnizor (cerere de ofertă sau clarificăr
 | Câmp             | Tip                     | Obligatoriu | Validare                          | Descriere                                                   |
 |------------------|-------------------------|-------------|-----------------------------------|-------------------------------------------------------------|
 | `kind`           | `"rfq"` \| `"clarification"` | da    |                                   | Tip e-mail                                                  |
-| `language`       | string                  | da          | Una din: `ro`, `en`, `de`, `fr`, `it`, `es`, `pl`, `cs`, `hu`, `tr` | Limba draftului |
+| `language`       | string                  | da          | Una din: `ro`, `en`, `de`, `fr`, `it`, `es`, `pl`, `cs`, `hu`, `tr`, `bg`, `zh-CN`, `zh-TW`, `ja`, `ko`, `pt`, `nl`, `el`, `sk`, `sl`, `hr`, `sr`, `uk`, `sv`, `da`, `no`, `fi` | Limba draftului |
 | `contact_name`   | string                  | nu          | `max_length=100`, default `""`    | Numele persoanei de contact                                 |
 | `items`          | array                   | da          | `min_length=1, max_length=50`     | Lista de articole                                           |
 | `items[].code`   | string                  | da          | `min_length=1, max_length=64`     | Codul piesei                                                |

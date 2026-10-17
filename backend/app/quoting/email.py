@@ -23,7 +23,11 @@ from app.llm import Colibri
 from app.rag.grounding import is_part_code, norm_code
 
 LANGUAGES = {"ro": "Romanian", "en": "English", "de": "German", "fr": "French", "it": "Italian",
-             "es": "Spanish", "pl": "Polish", "cs": "Czech", "hu": "Hungarian", "tr": "Turkish"}
+             "es": "Spanish", "pl": "Polish", "cs": "Czech", "hu": "Hungarian", "tr": "Turkish",
+             "bg": "Bulgarian", "zh-CN": "Simplified Chinese", "zh-TW": "Traditional Chinese",
+             "ja": "Japanese", "ko": "Korean", "pt": "Portuguese", "nl": "Dutch", "el": "Greek",
+             "sk": "Slovak", "sl": "Slovenian", "hr": "Croatian", "sr": "Serbian", "uk": "Ukrainian",
+             "sv": "Swedish", "da": "Danish", "no": "Norwegian", "fi": "Finnish"}
 
 router = APIRouter()
 

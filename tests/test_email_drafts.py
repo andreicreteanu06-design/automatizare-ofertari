@@ -169,3 +169,19 @@ def test_gateway_guard_check_endpoint():
     assert c.post("/guard/check", json={"texts": ["Anfrage 3EST000123"]}).json() == {"ok": True, "rules": []}
     assert c.post("/guard/check", json={"texts": ["ok", "für Acme  Rail"]}).json() == {"ok": False, "rules": ["term#0"]}
     assert c.post("/guard/check", json={"texts": []}).status_code == 422
+
+
+@pytest.mark.parametrize("lang,target,greeting", [
+    ("bg", "Bulgarian", "Здравейте"),
+    ("zh-CN", "Simplified Chinese", "您好"),
+    ("zh-TW", "Traditional Chinese", "您好"),
+])
+def test_new_languages_reach_translator_and_guard(make, lang, target, greeting):
+    output = f"SUBJECT: {greeting} 3EST000123 DIN933-M12X40\nBODY:\n{greeting} 3EST000123 4 buc DIN933-M12X40 250 pcs"
+    client, gw, llm = make(llm=Llm(output))
+    response = client.post("/emails/draft", json={**BASE, "language": lang})
+    assert response.status_code == 200, response.text
+    assert response.json()["language"] == lang
+    assert response.json()["body"].startswith(greeting)
+    assert f"into {target}" in llm.requests[0]["messages"][0]["content"]
+    assert len(gw.calls) == 2
