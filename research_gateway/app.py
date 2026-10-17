@@ -242,6 +242,8 @@ def create_app(guard=None, search=searxng_search, fetch=browser_fetch, verify=la
     guard = guard or load()  # fail-closed: fără denylist validă, serviciul nu pornește
     threshold = threshold if threshold is not None else float(os.environ.get("LAYA_THRESHOLD", 0.9))
     app = FastAPI(title="research-gateway")
+    from research_gateway.mail import router as mail_router
+    app.include_router(mail_router(guard))
     policy, cache = load_policy(), PageCache()
     live_slots = asyncio.Semaphore(2)
 

@@ -27,6 +27,8 @@ from app.quoting.saga import SagaExportIn, build_xml, client_cif_ok, company_fro
 MAX_CONTEXT_CHARS = 12_000  # ~3.5k tokeni: promptul încape în KV-cache-ul Colibri pe 16 GB
 
 app = FastAPI(title="ofertare-backend")
+from app.mail_accounts import router as mail_accounts_router
+app.include_router(mail_accounts_router)
 app.include_router(email_router)
 app.include_router(memory_router)
 

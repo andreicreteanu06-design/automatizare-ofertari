@@ -87,3 +87,5 @@ Instalarea este destinată unei infrastructuri controlate de client, cu Docker �
 - [API_DOCS.md](API_DOCS.md) — Structura completă a API-ului de backend, modele de date, exporturi și coduri de eroare.
 - [LANSARE.md](LANSARE.md) — Ghid pas cu pas pentru prima lansare, pregătirea modelelor și verificarea integrării Saga.
 - [Frontend README](frontend/README.md) — Arhitectura SPA, configurarea proxy-ului și testele de browser.
+
+- [EMAIL_CONNECT.md](EMAIL_CONNECT.md) — conectare Google/Microsoft și trimiterea explicită a drafturilor.

@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/emails/accounts', r => r.fulfill({ json: [{ provider: 'google', configured: false }, { provider: 'microsoft', configured: false }] }));
+});
+
 test('persistent conversation survives reload and submits version plus idempotency key', async ({ page }) => {
   let row = null;
   const payloads = [];

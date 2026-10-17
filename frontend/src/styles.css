@@ -175,3 +175,16 @@
 .chat-settings summary { cursor: pointer; font-weight: 500; }
 .chat-settings summary span { float: right; font-size: 11px; color: #83887f; font-weight: 400; }
 @media (max-width:639px) { .chat-settings summary span { display: none; } }
+
+/* Mail account connections and explicit delivery */
+.mail-accounts { margin-bottom: 24px; }
+.mail-provider-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.mail-provider { border: 1px solid var(--border, #e7e5e4); border-radius: 14px; padding: 20px; min-width: 0; }
+.mail-provider-name { display: flex; align-items: center; gap: 12px; }
+.mail-provider p { font-size: 13px; margin: 12px 0 16px; overflow-wrap: anywhere; }
+.mail-provider .btn { width: 100%; }
+.mail-send { border-top: 1px solid var(--border, #e7e5e4); margin-top: 24px; padding-top: 24px; }
+.mail-send h3 { margin-bottom: 16px; font-weight: 600; }
+.mail-send .check { align-items: flex-start; }
+.mail-send fieldset { min-width: 0; }
+@media (max-width: 640px) { .mail-provider-grid { grid-template-columns: 1fr; } }

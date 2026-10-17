@@ -17,7 +17,7 @@ const tabs = [
   { id: 'email', label: 'Draft e-mail', icon: Mail, eyebrow: 'COMUNICARE CU FURNIZORII', title: 'Un mesaj. Zece limbi.', description: 'Pregătește cereri de ofertă și clarificări tehnice pentru furnizori.' },
 ];
 function App() {
-  const initial = () => ['offers', 'chat', 'email'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'home';
+  const initial = () => ['offers', 'chat', 'email'].includes(location.hash.slice(1).split('?')[0]) ? location.hash.slice(1).split('?')[0] : 'home';
   const [active, setActive] = useState(initial);
   const [entered, setEntered] = useState(() => initial() !== 'home');
   const navigate = id => { location.hash = id; setActive(id); if (id !== 'home') setEntered(true); };

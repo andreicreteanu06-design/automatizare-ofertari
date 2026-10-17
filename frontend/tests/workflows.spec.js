@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/api/emails/accounts', r => r.fulfill({ json: [{ provider: 'google', configured: false }, { provider: 'microsoft', configured: false }] }));
+});
+
+test.beforeEach(async ({ page }) => {
   await page.route('**/api/conversations', route => route.request().method() === 'GET'
     ? route.fulfill({ json: [] })
     : route.fulfill({ json: { id: '11111111-1111-4111-8111-111111111111', version: 0, ...route.request().postDataJSON() } }));

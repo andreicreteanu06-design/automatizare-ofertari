@@ -69,3 +69,6 @@ frontend/playwright-report/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# OAuth SQLite journals may contain local account data
+*.sqlite3-*

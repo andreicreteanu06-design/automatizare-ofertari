@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/emails/accounts', r => r.fulfill({ json: [{ provider: 'google', configured: false }, { provider: 'microsoft', configured: false }] }));
+});
+
 test('landing is local, theme works, navigation preserves the offer', async ({ page }) => {
   const external = [];
   page.on('request', r => { if (!r.url().startsWith('http://127.0.0.1:5175') && !r.url().startsWith('data:')) external.push(r.url()); });

@@ -27,6 +27,7 @@ networks:
 
 volumes:
   pgdata:
+  maildata:
   qdrant:
 
 services:
@@ -102,6 +103,8 @@ services:
       COLIBRI_URL: http://colibri:5000/v1
       LAYA_URL: http://laya:5000/v1/systemone
       RESEARCH_GATEWAY_URL: http://research-gateway:8000
+      MAIL_SERVICE_KEY: ${MAIL_SERVICE_KEY:-}
+      MAIL_PUBLIC_URL: ${MAIL_PUBLIC_URL:-http://127.0.0.1:8080}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}  # true când UI-ul este servit prin HTTPS
       HF_HUB_OFFLINE: "1"                       # fără descărcări: rețeaua e internă oricum
       RERANK_ENABLED: ${RERANK_ENABLED:-false}
@@ -197,6 +200,14 @@ services:
     build: ./research_gateway
     networks: [internal, egress]
     environment:
+      MAIL_SERVICE_KEY: ${MAIL_SERVICE_KEY:-}
+      MAIL_TOKEN_KEY: ${MAIL_TOKEN_KEY:-}
+      MAIL_PUBLIC_URL: ${MAIL_PUBLIC_URL:-http://127.0.0.1:8080}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+      MICROSOFT_TENANT: ${MICROSOFT_TENANT:-common}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}  # opțional până la integrarea Gemini
       SEARXNG_URL: http://searxng:8080
       STEALTH_BROWSER_URL: http://stealth-browser:8000
@@ -205,6 +216,7 @@ services:
       DENYLIST_PATH: /config/denylist.yaml
       SOURCE_POLICY_PATH: /config/source_policy.json
     volumes:
+      - maildata:/mail-data
       - ./config/denylist.yaml:/config/denylist.yaml:ro
       - ${SOURCE_POLICY_FILE:-./config/source_policy.example.json}:/config/source_policy.json:ro
     mem_limit: 256m
