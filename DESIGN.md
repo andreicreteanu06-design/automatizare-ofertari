@@ -33,3 +33,18 @@ Revizuirea vizuală a acoperit chatul inițial/activ, mobil, documente și ofert
 Centrarea titlului desktop a fost corectată și verificată. Documentația a fost
 finalizată manual; utilitarul Impeccable nu a rulat și sidecar-ul nu a fost validat
 împotriva unei scheme externe.
+
+
+## Chat în stil notebook
+
+`notebook.css` adaugă un panou Surse alimentat din `/sources`, conversația centrală
+și un panou Surse și pasaje legat de răspunsuri. Peste 1650 px sunt trei coloane;
+sub acest prag pasajele trec dedesubt, iar sub 1050 px toate zonele sunt stivuite.
+Panoul de surse este informativ: nu filtrează căutarea pe un subset bifat.
+Citările deschid pasajele răspunsului din care provin, inclusiv pentru mesaje vechi.
+
+Inspirație de organizare: [Open Notebook](https://github.com/lfnovo/open-notebook),
+proiect sub licență MIT, cu surse și conversații contextualizate. Nu a fost copiat
+cod și nu a fost adăugat un al doilea stack de baze de date/LLM. Backend-ul RAG,
+verificarea citărilor și Egress Guard rămân cele ale proiectului. Căutarea Live este
+opțională, oprită inițial; numai întrebarea curentă merge spre gateway, nu folderele.

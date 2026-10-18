@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => { await page.route('**/api/sources', r => r.fulfill({ json: { sources: [], worker_active: true } })); });
+
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/emails/accounts', r => r.fulfill({ json: [{ provider: 'google', configured: false }, { provider: 'microsoft', configured: false }] }));
 });

@@ -50,6 +50,51 @@ def message(provider='google', **extra):
     return account(provider, request_id=str(uuid4()), to='buyer@example.com', subject='Cerere P1', body='Bună ziua, doresc 2 bucăți.', confirmed=True, **extra)
 
 
+def logo_png(color='blue'):
+    import io
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new('RGB', (20, 10), color).save(out, format='PNG')
+    return base64.b64encode(out.getvalue()).decode()
+
+
+@pytest.mark.parametrize('provider', ['google', 'microsoft'])
+def test_inline_logo_real_payload_and_idempotency(setup, monkeypatch, provider):
+    import json
+    from email import policy
+    from email.parser import BytesParser
+    seed(provider)
+    calls = []
+    def handler(request):
+        calls.append(request)
+        payload = json.loads(request.content)
+        if provider == 'google':
+            parsed = BytesParser(policy=policy.default).parsebytes(base64.urlsafe_b64decode(payload['raw']))
+            images = [part for part in parsed.walk() if part.get_content_type() == 'image/png']
+            assert len(images) == 1 and images[0]['Content-ID'] == '<company-logo>'
+            assert images[0].get_payload(decode=True).startswith(b'\x89PNG')
+            assert 'cid:company-logo' in parsed.get_body(preferencelist=('html',)).get_content()
+            assert parsed.get_body(preferencelist=('plain',)).get_content().strip() == 'Bună ziua, doresc 2 bucăți.'
+        else:
+            assert payload['message']['body']['contentType'] == 'HTML'
+            logo = payload['message']['attachments'][0]
+            assert logo['isInline'] and logo['contentId'] == 'company-logo'
+            assert base64.b64decode(logo['contentBytes']).startswith(b'\x89PNG')
+        return httpx.Response(202)
+    transport(monkeypatch, handler)
+    request = message(provider, logo_base64=logo_png())
+    assert setup.post('/mail/send', json=request).json()['status'] == 'accepted'
+    assert setup.post('/mail/send', json=request).json()['status'] == 'accepted'
+    assert len(calls) == 1
+    request['logo_base64'] = logo_png('red')
+    assert setup.post('/mail/send', json=request).status_code == 409
+
+
+@pytest.mark.parametrize('logo', ['not-base64!', base64.b64encode(b'<svg onload="alert(1)"></svg>').decode(), 'a' * 700001], ids=['invalid-base64', 'svg-refused', 'oversized'])
+def test_invalid_logo_rejected_before_send(setup, logo):
+    assert setup.post('/mail/send', json=message(logo_base64=logo)).status_code == 422
+
+
 def test_internal_auth_and_configuration(setup, monkeypatch):
     assert setup.post('/mail/status', json=account(), headers={'X-Mail-Service-Key': 'wrong'}).status_code == 403
     monkeypatch.delenv('GOOGLE_CLIENT_SECRET')

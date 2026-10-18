@@ -1,0 +1,30 @@
+.notebook-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 18px; align-items: start; }
+.shell .notebook-layout .technical-chat { max-width: none; min-width: 0; width: 100%; margin: 0; overflow: clip; }
+.notebook-sources, .notebook-evidence { background: #f9fafc; color: #26364c; border-radius: 20px; padding: 20px; box-shadow: var(--surface-depth); min-width: 0; }
+.notebook-sources { max-height: calc(100dvh - 150px); overflow: auto; position: sticky; top: 24px; }
+.notebook-sources header, .notebook-sources h2 { display: flex; gap: 10px; align-items: center; }
+.notebook-sources header { justify-content: space-between; margin-bottom: 20px; }
+.notebook-sources header .btn { padding: 8px; }
+.notebook-sources h2, .notebook-evidence h2 { font-size: 18px; }
+.notebook-sources p, .notebook-evidence p { font-size: 14px; line-height: 1.65; margin: 14px 0; }
+.notebook-add { display: flex; align-items: center; justify-content: center; gap: 8px; background: #e9e6f2; color: #3c3150; padding: 12px 8px; border-radius: 12px; font-size: 14px; font-weight: 600; }
+.notebook-count { font-weight: 600; }
+.notebook-folder { border-top: 1px solid #d1d9e3; padding: 16px 0; overflow-wrap: anywhere; }
+.notebook-folder summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+.notebook-folder summary small { margin-left: auto; }
+.notebook-folder svg, .notebook-file svg { flex-shrink: 0; }
+.notebook-file { display: flex; align-items: start; gap: 8px; padding: 9px 0; font-size: 13px; }
+.notebook-file small { display: block; color: #526176; margin-top: 4px; }
+.notebook-evidence { grid-column: 1 / -1; }
+.notebook-evidence details { border-top: 1px solid #d1d9e3; padding: 14px 0; overflow-wrap: anywhere; }
+.notebook-evidence summary { cursor: pointer; font-size: 14px; font-weight: 600; }
+.notebook-evidence blockquote { padding: 16px; margin: 12px 0; background: #eef0f7; border-radius: 10px; font-size: 14px; line-height: 1.65; white-space: pre-wrap; }
+.notebook-evidence a { color: #3d438b; text-decoration: underline; overflow-wrap: anywhere; }
+.shell .notebook-layout .chat-hero { padding: 35px 0 26px; }
+.shell .notebook-layout .chat-hero h2 { font-size: clamp(28px, 3vw, 40px); }
+.shell .notebook-layout .chat-stage { padding-inline: 22px; overflow: clip; }
+.shell .chat-focus .notebook-mode { color: #ddd5ed; margin: 0 0 16px; font-size: 13px; }
+.shell .chat-focus .message summary { color: #dfd0f1; }
+.shell .notebook-layout .citation { cursor: pointer; }
+@media (min-width: 1650px) { .notebook-layout { grid-template-columns: 250px minmax(0, 1fr) 270px; } .notebook-evidence { grid-column: auto; } }
+@media (max-width: 1050px) { .notebook-layout { grid-template-columns: minmax(0,1fr); } .notebook-sources { position: static; max-height: 300px; overflow: auto; } .notebook-evidence { grid-column: auto; } .shell .notebook-layout .chat-stage { padding-inline: 16px; } }

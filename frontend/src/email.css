@@ -21,3 +21,7 @@
 .shell .draft-preview .draft-body { font-size: 15px; line-height: 1.7; background: #fff; }
 @media (min-width: 1200px) { .shell .draft-preview { position: sticky; top: 24px; } }
 @media (max-width: 1199px) { .shell .email-layout { display: flex; flex-direction: column; } .shell .email-layout > * { width: 100%; } .shell .draft-preview { order: -1; } .shell .draft-preview .draft-body { height: 220px; } }
+
+.company-logo-sample { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; margin-top: 16px; }
+.company-logo-sample img, .email-logo-preview img { width: 180px; height: auto; max-height: 180px; object-fit: contain; }
+.email-logo-preview { padding: 20px; margin-top: 12px; background: white; border-radius: 12px; }

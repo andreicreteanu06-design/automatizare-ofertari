@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => { await page.route('**/api/sources', r => r.fulfill({ json: { sources: [], worker_active: true } })); });
+
 test('connects only a selected authorized folder and displays indexing status', async ({ page }) => {
   await page.route('**/api/conversations', r => r.fulfill({ json: [] }));
   await page.route('**/api/emails/accounts', r => r.fulfill({ json: [] }));
@@ -20,7 +22,7 @@ test('connects only a selected authorized folder and displays indexing status', 
   await page.getByRole('button', { name: 'Conectează', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Sursă adăugată');
   await expect(page.getByText('Folder monitorizat · În așteptare')).toBeVisible();
-  await expect(page.getByText('0 documente indexate', { exact: false })).toBeVisible();
+  await expect(page.locator('.source-library').getByText('0 documente indexate', { exact: false })).toBeVisible();
 });
 
 test('Drive connection validates folder ID and exposes missing worker', async ({ page }) => {

@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => { await page.route('**/api/sources', r => r.fulfill({ json: { sources: [], worker_active: true } })); });
+
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/conversations', r => r.fulfill({ json: [] }));
   await page.route('**/api/emails/accounts', r => r.fulfill({ json: [
@@ -14,6 +16,34 @@ async function draft(page) {
   await page.locator('.email-layout').getByLabel('Cod articol').fill('P1');
   await page.getByRole('button', { name: 'Generează draftul' }).click();
 }
+
+test('company logo is previewed, sent explicitly, and removable', async ({ page }) => {
+  await page.goto('/#email');
+  await page.getByText('Logo-ul firmei · opțional', { exact: true }).click();
+  await page.getByLabel('Alege logo-ul firmei').setInputFiles({ name: 'logo.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg/>') });
+  await expect(page.getByRole('alert')).toContainText('PNG sau JPEG');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6Y1sAAAAASUVORK5CYII=', 'base64');
+  await page.getByLabel('Alege logo-ul firmei').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: png });
+  await expect(page.getByAltText('Logo inclus în e-mail')).toBeVisible();
+  await page.locator('.email-layout').getByLabel('Cod articol').fill('P1');
+  await page.getByRole('button', { name: 'Generează draftul' }).click();
+  await page.getByLabel('Trimite din contul').selectOption('google');
+  await page.getByLabel('Destinatar', { exact: true }).fill('buyer@example.com');
+  await page.getByRole('checkbox', { name: 'Am verificat destinatarul' }).check();
+  let sends = 0;
+  await page.route('**/api/emails/send', r => {
+    expect(r.request().postDataJSON().logo_base64).toBeTruthy();
+    sends++;
+    return r.fulfill({ json: { status: 'accepted' } });
+  });
+  await page.screenshot({ path: test.info().outputPath('email-logo.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Trimite e-mailul', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Mesaj acceptat');
+  expect(sends).toBe(1);
+  await page.getByRole('button', { name: 'Elimină logo-ul' }).click();
+  await expect(page.getByAltText('Logo inclus în e-mail')).toHaveCount(0);
+  await expect(page.locator('.draft-meta')).toContainText('neverificată');
+});
 
 test('instant preview, grounded article selection, and stale draft cannot be sent', async ({ page }) => {
   let generations = 0;

@@ -116,3 +116,22 @@ Referințe: [Google OAuth web server](https://developers.google.com/identity/pro
 [Gmail scopes](https://developers.google.com/workspace/gmail/api/auth/scopes),
 [Microsoft authorization code + PKCE](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow),
 [Graph sendMail](https://learn.microsoft.com/en-us/graph/api/user-sendmail).
+
+
+## Logo în mesaj
+
+Opțiunea „Logo-ul firmei” acceptă PNG/JPEG de maximum 512 KiB și 1024×1024 pixeli.
+Logo-ul este păstrat în formularul curent, fără stocare permanentă; reîncărcarea paginii
+îl elimină. Interfața îl previzualizează și îl recodifică PNG. Modificarea lui anulează
+draftul validat. Copierea în clipboard copiază numai textul.
+
+`POST /emails/send` acceptă opțional `logo_base64` (fără prefix data-URL).
+Gateway-ul validează imaginea, o recodifică fără metadata și o include în identitatea
+cererii pentru idempotency. Gmail primește plain text + HTML/related cu imagine CID;
+Microsoft primește HTML și fileAttachment inline cu același contentId. Textul este
+escapat HTML. Nu se folosesc URL-uri externe pentru imagine și nu se trimit imagini
+fără confirmarea explicită a mesajului. Afișarea depinde și de clientul destinatarului.
+
+Egress Guard verifică textul și adresele; nu efectuează OCR pe logo. Utilizatorul
+verifică imaginea înainte de trimitere. Testele verifică payload-urile furnizorilor
+cu transport HTTP simulat, fără trimiterea unor e-mailuri reale.

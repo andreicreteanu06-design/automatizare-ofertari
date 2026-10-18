@@ -8,6 +8,8 @@ import re
 import secrets
 import sqlite3
 import time
+import io
+from html import escape
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Literal
@@ -38,7 +40,32 @@ class SendIn(AccountIn):
     to: str = Field(max_length=254)
     subject: str = Field(min_length=1, max_length=300)
     body: str = Field(min_length=1, max_length=50000)
+    logo_base64: str | None = Field(default=None, max_length=700000)
     confirmed: Literal[True]
+
+    @field_validator('logo_base64')
+    @classmethod
+    def logo(cls, value):
+        if value is None:
+            return None
+        from PIL import Image
+        try:
+            raw = base64.b64decode(value, validate=True)
+            if len(raw) > 512 * 1024:
+                raise ValueError()
+            with Image.open(io.BytesIO(raw)) as image:
+                if image.format not in ('PNG', 'JPEG') or not 0 < image.width <= 1024 or not 0 < image.height <= 1024:
+                    raise ValueError()
+                image.load()
+                clean = Image.new('RGBA', image.size)
+                clean.paste(image.convert('RGBA'))
+                output = io.BytesIO()
+                clean.save(output, format='PNG')
+            if output.tell() > 512 * 1024:
+                raise ValueError()
+            return base64.b64encode(output.getvalue()).decode()
+        except Exception:
+            raise ValueError('Logo invalid: PNG/JPEG, maximum 512 KB și 1024 × 1024 pixeli.') from None
 
     @field_validator('to')
     @classmethod
@@ -206,7 +233,10 @@ def router(guard):
             guard.check([account['email'], body.to, body.subject, body.body])
         except EgressBlocked as exc:
             raise HTTPException(422, {'error': 'Trimitere blocată de Egress Guard.', 'rules': exc.rules}) from None
-        digest = hashlib.sha256(json.dumps([body.provider, account['email'], body.to, body.subject, body.body]).encode()).hexdigest()
+        fingerprint = [body.provider, account['email'], body.to, body.subject, body.body]
+        if body.logo_base64:
+            fingerprint.append(body.logo_base64)
+        digest = hashlib.sha256(json.dumps(fingerprint).encode()).hexdigest()
         old = store.db.execute('SELECT digest,status FROM sends WHERE owner=? AND id=?', (body.owner, str(body.request_id))).fetchone()
         if old:
             if old['digest'] != digest:
@@ -230,11 +260,17 @@ def router(guard):
             message = EmailMessage()
             message['From'], message['To'], message['Subject'] = account['email'], body.to, body.subject
             message.set_content(body.body)
+            if body.logo_base64:
+                message.add_alternative('<div>' + escape(body.body).replace('\n', '<br>') + '</div><br><img src="cid:company-logo" alt="Logo companie" width="180">', subtype='html')
+                message.get_payload()[-1].add_related(base64.b64decode(body.logo_base64), maintype='image', subtype='png', cid='<company-logo>', filename='logo.png', disposition='inline')
             url = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'
             payload = {'raw': base64.urlsafe_b64encode(message.as_bytes()).decode()}
         else:
             url = 'https://graph.microsoft.com/v1.0/me/sendMail'
             payload = {'message': {'subject': body.subject, 'body': {'contentType': 'Text', 'content': body.body}, 'toRecipients': [{'emailAddress': {'address': body.to}}]}, 'saveToSentItems': True}
+            if body.logo_base64:
+                payload['message']['body'] = {'contentType': 'HTML', 'content': '<div>' + escape(body.body).replace('\n', '<br>') + '</div><br><img src="cid:company-logo" alt="Logo companie" width="180">'}
+                payload['message']['attachments'] = [{'@odata.type': '#microsoft.graph.fileAttachment', 'name': 'logo.png', 'contentType': 'image/png', 'contentId': 'company-logo', 'isInline': True, 'contentBytes': body.logo_base64}]
         status = 'unknown'
         try:
             async with httpx.AsyncClient(timeout=30, trust_env=False) as client:

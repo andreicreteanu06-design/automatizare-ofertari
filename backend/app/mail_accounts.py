@@ -90,6 +90,7 @@ class SendIn(BaseModel):
     to: str = Field(min_length=3, max_length=254)
     subject: str = Field(min_length=1, max_length=300)
     body: str = Field(min_length=1, max_length=50000)
+    logo_base64: str | None = Field(default=None, max_length=700000)
     confirmed: Literal[True]
 
 
