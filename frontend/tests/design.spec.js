@@ -4,6 +4,27 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/emails/accounts', r => r.fulfill({ json: [{ provider: 'google', configured: false }, { provider: 'microsoft', configured: false }] }));
 });
 
+test('depth surfaces and reference chat render with server document limits', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.route('**/api/conversations', r => r.fulfill({ json: [] }));
+  await page.route('**/api/sources', r => r.fulfill({ json: { sources: [], worker_active: true, limits: { file_bytes: 250 * 1024 ** 2, folder_bytes: 100 * 1024 ** 3, files: 50000 } } }));
+  for (const section of ['chat', 'sources', 'offers']) {
+    await page.goto(`/#${section}`);
+    await page.evaluate(() => document.fonts.ready);
+    if (section === 'sources') {
+      await expect(page.getByText('Până la 250 MB', { exact: false })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Încarcă un folder', exact: true })).toBeEnabled();
+    }
+    if (section === 'chat') {
+      const heading = await page.locator('.chat-hero-content').boundingBox();
+      const composer = await page.locator('[data-composer]').boundingBox();
+      expect(Math.abs((heading.x + heading.width / 2) - (composer.x + composer.width / 2))).toBeLessThan(2);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/depth-${section}.png`, fullPage: true });
+  }
+});
+
 test('landing is local, theme works, navigation preserves the offer', async ({ page }) => {
   const external = [];
   page.on('request', r => { if (!r.url().startsWith('http://127.0.0.1:5175') && !r.url().startsWith('data:')) external.push(r.url()); });
@@ -17,7 +38,7 @@ test('landing is local, theme works, navigation preserves the offer', async ({ p
   await page.getByLabel('Număr ofertă', { exact: true }).fill('OF-DESIGN');
   await page.locator('.brand').click();
   await page.getByRole('link', { name: 'Începe o conversație' }).click();
-  await expect(page.getByText('O întrebare. Mai multe surse.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Documentele tale. Răspunsuri cu surse.' })).toBeVisible();
   await page.getByRole('button', { name: 'Generator oferte', exact: true }).click();
   await expect(page.getByLabel('Număr ofertă', { exact: true })).toHaveValue('OF-DESIGN');
   expect(external).toEqual([]);

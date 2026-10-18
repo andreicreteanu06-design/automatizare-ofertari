@@ -9,7 +9,10 @@ from pathlib import Path
 from research_gateway.egress_guard import load
 
 ID = re.compile(r'^[A-Za-z0-9_-]{10,200}$')
-MAX_BYTES = 40 * 1024 * 1024
+MAX_BYTES = int(os.getenv('SOURCE_MAX_FILE_MB', '250')) * 1024 * 1024
+MAX_FILES = int(os.getenv('SOURCE_MAX_FILES', '50000'))
+if not 1 <= MAX_BYTES // (1024 * 1024) <= 1024 or not 1 <= MAX_FILES <= 1000000:
+    raise ValueError('Limite Drive invalide.')
 EXTENSIONS = {'.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv'}
 EXPORTS = {'application/vnd.google-apps.document': ('application/pdf', '.pdf'),
            'application/vnd.google-apps.spreadsheet': ('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.xlsx')}
@@ -54,14 +57,14 @@ def inventory(folder, guard, call=run_gws):
                     if item['mimeType'] == 'application/vnd.google-apps.shortcut':
                         continue
                     if int(item.get('size', 0)) > MAX_BYTES:
-                        raise ValueError('Fișier Drive peste 40 MB.')
+                        raise ValueError(f'Fișier Drive peste {MAX_BYTES // 1024 ** 2} MB.')
                     files.append(item)
-                if len(files) + len(pending) + len(seen) > 1000:
-                    raise ValueError('Maximum 1.000 intrări per folder Drive.')
+                if len(files) + len(pending) + len(seen) > MAX_FILES:
+                    raise ValueError(f'Maximum {MAX_FILES:,} intrări per folder Drive.')
             token = data.get('nextPageToken')
             if not token:
                 break
-            if token in tokens or len(tokens) >= 100:
+            if token in tokens or len(tokens) >= MAX_FILES:
                 raise ValueError('Paginare Drive incompletă.')
             tokens.add(token)
     return files

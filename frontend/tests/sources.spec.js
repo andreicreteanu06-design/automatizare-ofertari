@@ -15,7 +15,7 @@ test('connects only a selected authorized folder and displays indexing status', 
   });
   await page.route('**/api/sources/folders?*', r => r.fulfill({ json: { configured: true, folders: [{ name: 'Technical', path: 'Technical' }] } }));
   await page.goto('/#sources');
-  await expect(page.getByText('Încărcarea salvează o copie.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Încărcarea din browser salvează o copie.', { exact: false })).toBeVisible();
   await page.getByText('Conectează un folder monitorizat', { exact: true }).click();
   await page.getByRole('button', { name: 'Conectează', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Sursă adăugată');

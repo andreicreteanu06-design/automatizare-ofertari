@@ -13,7 +13,16 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 EXTENSIONS = {'.pdf', '.docx', '.xlsx', '.txt', '.md', '.csv'}
-MAX_BYTES = 40 * 1024 * 1024
+def configured_limit(name, default, maximum):
+    value = int(os.getenv(name, str(default)))
+    if not 1 <= value <= maximum:
+        raise ValueError(f'{name} trebuie să fie între 1 și {maximum}.')
+    return value
+
+
+MAX_BYTES = configured_limit('SOURCE_MAX_FILE_MB', 250, 1024) * 1024 * 1024
+MAX_FOLDER_BYTES = configured_limit('SOURCE_MAX_FOLDER_GB', 100, 10000) * 1024 ** 3
+MAX_FILES = configured_limit('SOURCE_MAX_FILES', 50000, 1000000)
 router = APIRouter(prefix='/sources')
 
 
@@ -78,7 +87,7 @@ def listing():
             item['files'] = [dict(f) for f in db.execute('SELECT path,doc_id,status,updated,error FROM files WHERE source=? ORDER BY updated DESC LIMIT 50', (source['id'],))]
             rows.append(item)
         worker = db.execute('SELECT heartbeat FROM worker WHERE id=1').fetchone()
-        return {'sources': rows, 'worker_active': bool(worker and time.time() - worker[0] < 120), 'formats': sorted(EXTENSIONS), 'poll_seconds': 30}
+        return {'sources': rows, 'worker_active': bool(worker and time.time() - worker[0] < 120), 'formats': sorted(EXTENSIONS), 'poll_seconds': 30, 'limits': {'file_bytes': MAX_BYTES, 'folder_bytes': MAX_FOLDER_BYTES, 'files': MAX_FILES}}
     finally:
         db.close()
 
@@ -157,9 +166,9 @@ async def upload(sid: UUID, request: Request, path: str):
     if target.suffix.lower() not in EXTENSIONS:
         raise HTTPException(415, 'Format neacceptat.')
     existing = [p for p in (root('upload') / str(sid)).rglob('*') if p.is_file() and not p.name.startswith('.') and p != target]
-    if len(existing) >= 1000:
-        raise HTTPException(413, 'Maximum 1.000 de fișiere per folder încărcat.')
-    remaining = min(MAX_BYTES, 1024 * 1024 * 1024 - sum(p.stat().st_size for p in existing))
+    if len(existing) >= MAX_FILES:
+        raise HTTPException(413, f'Maximum {MAX_FILES:,} de fișiere per folder încărcat.')
+    remaining = min(MAX_BYTES, MAX_FOLDER_BYTES - sum(p.stat().st_size for p in existing))
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name('.' + str(uuid4()) + '.part')
     total = 0
@@ -168,7 +177,7 @@ async def upload(sid: UUID, request: Request, path: str):
             async for chunk in request.stream():
                 total += len(chunk)
                 if total > remaining:
-                    raise HTTPException(413, 'Maximum 40 MB per fișier și 1 GB per folder încărcat.')
+                    raise HTTPException(413, f'Limită: {MAX_BYTES // 1024 ** 2} MB per fișier și {MAX_FOLDER_BYTES // 1024 ** 3} GB per folder încărcat.')
                 out.write(chunk)
         if not total:
             raise HTTPException(422, 'Fișier gol.')
@@ -183,11 +192,15 @@ def doc_id(source, path):
 
 
 def content_digest(path):
+    digest, total = hashlib.sha256(), 0
     with path.open('rb') as stream:
-        content = stream.read(MAX_BYTES + 1)
-    if len(content) > MAX_BYTES:
-        raise ValueError('Fișier peste limita de dimensiune.')
-    return hashlib.sha256(content).hexdigest()
+        while chunk := stream.read(1024 * 1024):
+            total += len(chunk)
+            if total > MAX_BYTES:
+                raise ValueError('Fișier peste limita de dimensiune.')
+            digest.update(chunk)
+    return digest.hexdigest()
+
 
 
 def current_document(identifier, revision):

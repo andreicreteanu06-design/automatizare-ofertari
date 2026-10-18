@@ -117,6 +117,9 @@ services:
       COMPANY_COUNTY: ${COMPANY_COUNTY:-}
       COMPANY_IBAN: ${COMPANY_IBAN:-}
       COMPANY_BANK: ${COMPANY_BANK:-}
+      SOURCE_MAX_FILE_MB: ${SOURCE_MAX_FILE_MB:-250}
+      SOURCE_MAX_FOLDER_GB: ${SOURCE_MAX_FOLDER_GB:-100}
+      SOURCE_MAX_FILES: ${SOURCE_MAX_FILES:-50000}
       DOCLING_ARTIFACTS_PATH: /models/docling
     volumes: &backend-volumes
       - ./data/inbox:/data/inbox
@@ -196,6 +199,8 @@ services:
       dockerfile: drive_sync/Dockerfile
     networks: [egress]
     environment:
+      SOURCE_MAX_FILE_MB: ${SOURCE_MAX_FILE_MB:-250}
+      SOURCE_MAX_FILES: ${SOURCE_MAX_FILES:-50000}
       DENYLIST_PATH: /config/denylist.yaml
     volumes:
       - ./data/drive-config:/config/drive-sources:ro

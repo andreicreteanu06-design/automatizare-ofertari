@@ -15,8 +15,23 @@ Serviciul `source-watch` pornește automat. Necesită modelele locale de embeddi
 între procesări. Documentele mari pot dura minute; cadența nu garantează acces
 instantaneu. Starea documentelor este afișată în interfață.
 
-Formate: PDF, DOCX, XLSX, TXT, MD, CSV; maximum 40 MiB/fișier. Încărcări: maximum
-1.000 fișiere și 1 GiB/sursă. Monitorizare locală: maximum 10.000 documente/sursă.
+Formate: PDF, DOCX, XLSX, TXT, MD, CSV. Limitele inițiale configurabile în `.env`:
+- `SOURCE_MAX_FILE_MB=250`: MiB per fișier, pentru încărcare, monitorizare și Drive (1–1024).
+- `SOURCE_MAX_FOLDER_GB=100`: GiB per folder încărcat prin browser (1–10000).
+- `SOURCE_MAX_FILES=50000`: documente per sursă locală/încărcată și intrări Drive (1–1000000).
+
+Interfața citește limitele efective din `/sources`; după schimbarea configurației,
+recreează containerele. Nginx are un plafon de 1 GiB per cerere și transmite corpul
+în flux către backend. Încărcarea se scrie pe disc temporar și se publică atomic;
+amprentele SHA-256 sunt calculate în blocuri de 1 MiB.
+
+Pentru digitalizarea unui departament, folosește foldere monitorizate pe discul/NAS-ul
+clientului: nu dublează arhiva prin browser și nu aplică plafonul de volum al copiilor
+încărcate. Discul disponibil, limita per fișier și numărul maxim de documente rămân relevante.
+Limitele sunt praguri de admitere, nu o garanție de debit: fiecare document este procesat
+secvențial în subproces (timeout 30 minute, memorie container 5 GiB). PDF-urile scanate
+mari pot necesita împărțire pe volume. Nu s-a efectuat un benchmark cu 50.000 de documente;
+inventarierea și verificarea amprentelor unei arhive mari pot prelungi ciclurile.
 Fișierele ascunse și legăturile simbolice sunt omise. Textul și CSV sunt citite ca
 UTF-8, fără garanția reconstrucției tabelelor. Paginarea Office/text nu este identică
 cu paginile unui PDF original.
@@ -32,7 +47,7 @@ fără ACL per folder sau autentificare enterprise; utilizați doar spațiul aut
 Integrarea rulează `@googleworkspace/cli@0.22.5` în Docker, fără Node.js pe host,
 cu operațiile Drive list/get/export. Nu încarcă documentele locale în Google.
 Google Docs se exportă PDF, Sheets XLSX. Scurtăturile nu sunt urmărite. Limita este
-1.000 intrări/sursă. Sincronizarea verifică la 60 de secunde între cicluri, după
+`SOURCE_MAX_FILES` intrări/sursă (50.000 implicit, inclusiv directoarele). Sincronizarea verifică la 60 de secunde între cicluri, după
 care începe indexarea locală.
 
 Administratorul configurează Google Drive API și un cont de serviciu dedicat,

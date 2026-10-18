@@ -23,6 +23,8 @@ export default function Sources() {
   const [driveId, setDriveId] = useState('');
   const [progress, setProgress] = useState('');
   const picker = useRef(null);
+  const limits = data?.limits;
+  const mb = bytes => Math.round(bytes / 1024 ** 2).toLocaleString('ro-RO');
   async function refresh() {
     try { setData(await api('/sources')); } catch (e) { setError(e.message); }
   }
@@ -41,7 +43,8 @@ export default function Sources() {
     const all = Array.from(event.target.files || []);
     const files = all.filter(f => formats.includes(f.name.split('.').pop().toLowerCase()));
     if (!files.length) { setError('Folderul nu conține formate acceptate.'); return; }
-    if (files.length > 1000 || files.some(f => f.size > 40 * 1024 * 1024)) { setError('Maximum 1.000 de fișiere, fiecare de cel mult 40 MB.'); return; }
+    if (!limits) { setError('Așteaptă încărcarea limitelor de pe server și reîncearcă.'); return; }
+    if (files.length > limits.files || files.some(f => f.size > limits.file_bytes) || files.reduce((sum, f) => sum + f.size, 0) > limits.folder_bytes) { setError(`Maximum ${limits.files.toLocaleString('ro-RO')} de fișiere, ${mb(limits.file_bytes)} MB per fișier și ${Math.round(limits.folder_bytes / 1024 ** 3)} GB per folder.`); return; }
     setBusy(true); setError(''); setNotice('');
     let sid;
     let completed = 0;
@@ -59,13 +62,13 @@ export default function Sources() {
   }
   return <div className="source-library space-y-5">
     <Card title="De unde citește asistentul?" subtitle="Documentele sunt comune acestui spațiu de lucru. Conectează doar folderele pe care vrei să le poată consulta.">
-      <p>Fișiere PDF, Word, Excel, text, Markdown și CSV · maximum 40 MB per fișier. Documentele devin disponibile după procesare, nu imediat după copiere.</p>
+      <p>Fișiere PDF, Word, Excel, text, Markdown și CSV. {limits ? `Până la ${mb(limits.file_bytes)} MB per fișier · ${limits.files.toLocaleString('ro-RO')} documente per sursă · ${Math.round(limits.folder_bytes / 1024 ** 3)} GB per folder încărcat.` : 'Limitele se încarcă de pe server.'} Documentele devin disponibile după procesare, nu imediat după copiere.</p>
       <div className="source-actions">
-        <Button disabled={busy} onClick={() => picker.current.click()}><Upload size={18}/>Încarcă un folder</Button>
+        <Button disabled={busy || !limits} onClick={() => picker.current.click()}><Upload size={18}/>Încarcă un folder</Button>
         <input ref={picker} className="sr-only" type="file" webkitdirectory="" multiple aria-label="Folder de încărcat" onChange={upload} disabled={busy}/>
         <Button secondary disabled={busy} onClick={refresh}><RefreshCw size={18}/>Actualizează starea</Button>
       </div>
-      <p className="note mt-4">Încărcarea salvează o copie. Pentru fișiere noi și modificări automate, conectează un folder monitorizat mai jos.</p>
+      <p className="note mt-4">Pentru arhiva departamentului, conectează un folder monitorizat: documentele rămân pe discul clientului și modificările se preiau automat. Încărcarea din browser salvează o copie.</p>
       <details className="advanced-options" onToggle={e => { if (e.currentTarget.open) browse(''); }}><summary><FolderOpen size={18}/>Conectează un folder monitorizat</summary>
         <p>Administratorul pune directoarele de lucru în folderul autorizat prin configurarea Docker. Originalele sunt accesate doar pentru citire. Verificarea are loc la aproximativ 30 de secunde, între procesări.</p>
         <div className="source-actions"><Button secondary disabled={!browsePath || busy} onClick={() => browse(browsePath.split('/').slice(0, -1).join('/'))}>Înapoi</Button><span>{browsePath || 'Foldere autorizate'}</span></div>

@@ -9,6 +9,7 @@ import PdfEditor from './PdfEditor';
 import WorkspaceBackground from './WorkspaceBackground';
 import './styles.css';
 import './workspace.css';
+import './depth.css';
 import SculptureHero from './components/ui/liquid-sculpture-hero';
 import '@fontsource/geist/400.css';
 import '@fontsource/geist/500.css';

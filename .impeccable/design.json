@@ -1,0 +1,25 @@
+{
+  "scope": "workspace; landing unchanged",
+  "mode": "operate",
+  "source": "frontend/src/depth.css",
+  "tokens": {
+    "font": "Geist",
+    "panel": ["#ffffff", "#f8fafc", "#eaf0f7"],
+    "heading": "#203651",
+    "chatSurface": "#100c1d",
+    "chatHistory": "#191426",
+    "chatText": "#f9f7ff",
+    "chatSecondary": "#cec4df",
+    "chatAction": "#ded5f5",
+    "chatActionText": "#241835",
+    "focus": "3px solid #649fdd",
+    "focusOffset": "3px",
+    "surfaceDepth": "0 2px 3px #07152e24, 0 14px 28px #07152e24, inset 0 2px 1px #fff, inset 0 -2px 1px #b7c7db70",
+    "chatPadding": { "desktop": "36px", "mobile": "16px" },
+    "composerRadius": { "desktop": "25px", "mobile": "20px" },
+    "motion": "180ms cubic-bezier(.22,1,.36,1)",
+    "reducedMotion": "disable button transitions and displacement"
+  },
+  "constraints": ["local assets", "flat body text", "preserve evidence and send verification", "no automatic submission from suggestions"],
+  "validation": "project reference only; no external schema validation"
+}

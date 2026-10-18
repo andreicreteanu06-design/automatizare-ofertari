@@ -43,6 +43,60 @@ def test_upload_binary_nested_and_csrf(env):
     assert not list((tmp / 'uploads').rglob('*.part'))
 
 
+def test_configured_upload_limits_and_atomic_overwrite(env, monkeypatch):
+    client, tmp = env
+    monkeypatch.setattr(sources, 'MAX_BYTES', 12)
+    monkeypatch.setattr(sources, 'MAX_FOLDER_BYTES', 15)
+    monkeypatch.setattr(sources, 'MAX_FILES', 2)
+    assert client.get('/sources').json()['limits'] == {'file_bytes': 12, 'folder_bytes': 15, 'files': 2}
+    sid = client.post('/sources', json={'kind': 'upload', 'name': 'Test'}).json()['id']
+    endpoint = f'/sources/{sid}/upload'
+    assert client.post(endpoint, params={'path': 'one.txt'}, content=b'123456789012').status_code == 200
+    assert client.post(endpoint, params={'path': 'one.txt'}, content=b'x' * 13).status_code == 413
+    assert (tmp / 'uploads' / sid / 'one.txt').read_bytes() == b'123456789012'
+    assert client.post(endpoint, params={'path': 'two.txt'}, content=b'1234').status_code == 413
+    assert client.post(endpoint, params={'path': 'two.txt'}, content=b'123').status_code == 200
+    assert client.post(endpoint, params={'path': 'three.txt'}, content=b'1').status_code == 413
+    assert not list((tmp / 'uploads').rglob('*.part'))
+
+
+def test_upload_above_former_40_mib_limit(env):
+    client, tmp = env
+    sid = client.post('/sources', json={'kind': 'upload', 'name': 'Arhiva'}).json()['id']
+    payload = b'0' * (41 * 1024 * 1024)
+    response = client.post(f'/sources/{sid}/upload', params={'path': 'large.pdf'}, content=payload)
+    assert response.status_code == 200
+    assert (tmp / 'uploads' / sid / 'large.pdf').stat().st_size == len(payload)
+
+
+def test_large_document_digest_streams_and_preserves_revision(tmp_path, monkeypatch):
+    import hashlib
+    path = tmp_path / 'large.pdf'
+    with path.open('wb') as out:
+        out.seek(41 * 1024 * 1024)
+        out.write(b'end')
+    assert sources.MAX_BYTES >= path.stat().st_size
+    expected = hashlib.sha256(path.read_bytes()).hexdigest()
+    original = Path.open
+    reads = []
+    class Reader:
+        def __enter__(self):
+            self.stream = original(path, 'rb')
+            return self
+        def __exit__(self, *args):
+            self.stream.close()
+        def read(self, size):
+            reads.append(size)
+            assert size <= 1024 * 1024
+            return self.stream.read(size)
+    monkeypatch.setattr(Path, 'open', lambda *args, **kwargs: Reader())
+    assert sources.content_digest(path) == expected
+    assert len(reads) > 40
+    monkeypatch.setattr(sources, 'MAX_BYTES', 1024)
+    with pytest.raises(ValueError):
+        sources.content_digest(path)
+
+
 def test_monitor_revisions_deletion_and_freshness(env):
     client, tmp = env
     sid = client.post('/sources', json={'kind': 'local', 'name': 'Technical', 'path': 'Technical'}).json()['id']

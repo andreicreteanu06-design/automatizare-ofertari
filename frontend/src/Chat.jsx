@@ -1,3 +1,4 @@
+import { Hero1 } from './components/ui/hero-1';
 import { useEffect, useRef, useState } from 'react';
 import { BookOpen, ArrowUpRight, MessageSquareText, Plus } from 'lucide-react';
 import { api } from './api';
@@ -120,7 +121,7 @@ export default function Chat() {
     </div><p className="text-xs mt-3">Istoricul este asociat acestui browser. Ștergerea cookie-ului pierde accesul. Referințele salvate necesită reverificare în surse.</p></details>
     </section>
     <section className="chat-stage" ref={stage} aria-label="Asistent tehnic">
-      <div className="chat-stage-heading"><div><div className="chat-signature"><BookOpen size={18} aria-hidden="true"/><span>Asistentul tău tehnic</span></div><h2>Documentele tale.<br/><em>Răspunsuri cu surse.</em></h2><p>Întreabă despre o piesă, o specificație sau un preț.</p></div></div>
+      <Hero1 />
       <ErrorBox error={error} />
       <BranchingReasoningChatInput
         status={busy ? 'answering' : messages.length ? 'done' : 'idle'}

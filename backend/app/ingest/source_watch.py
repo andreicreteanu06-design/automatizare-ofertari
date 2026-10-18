@@ -7,7 +7,7 @@ import threading
 import time
 from pathlib import Path
 
-from app.sources import EXTENSIONS, MAX_BYTES, connect, doc_id, root, safe_path, content_digest
+from app.sources import EXTENSIONS, MAX_BYTES, MAX_FILES, connect, doc_id, root, safe_path, content_digest
 
 
 def remove_document(identifier):
@@ -46,8 +46,8 @@ def snapshot(folder):
                 continue
             stat = path.stat()
             result[rel] = (path, stat)
-            if len(result) > 10000:
-                raise ValueError('Limita de 10.000 de documente per sursă a fost depășită.')
+            if len(result) > MAX_FILES:
+                raise ValueError(f'Limita de {MAX_FILES:,} documente per sursă a fost depășită.')
     return result
 
 
@@ -70,7 +70,7 @@ def scan_source(db, source, index=index_document, remove=remove_document, now=No
         identifier = doc_id(sid, rel)
         if stat.st_size > MAX_BYTES:
             remove(identifier)
-            db.execute('INSERT OR REPLACE INTO files VALUES(?,?,?,?,?,?,?)', (sid, rel, '', identifier, 'error', now, 'Fișier peste 40 MB.'))
+            db.execute('INSERT OR REPLACE INTO files VALUES(?,?,?,?,?,?,?)', (sid, rel, '', identifier, 'error', now, f'Fișier peste {MAX_BYTES // 1024 ** 2} MB.'))
             db.commit()
             errors += 1
             continue
