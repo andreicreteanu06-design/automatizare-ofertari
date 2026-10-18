@@ -15,6 +15,10 @@ Provider = Literal['google', 'microsoft']
 
 
 def owner(request):
+    from app.auth import account_owner
+    user = account_owner(request)
+    if user:
+        return user
     token = request.cookies.get(COOKIE, '')
     if not 40 <= len(token) <= 100:
         raise HTTPException(401, 'Reîncarcă pagina pentru inițializarea contului.')
@@ -53,7 +57,8 @@ async def accounts(request: Request, response: Response):
         token = secrets.token_urlsafe(48)
     response.set_cookie(COOKIE, token, httponly=True, samesite='lax', secure=os.getenv('COOKIE_SECURE', 'false').lower() == 'true', max_age=365 * 86400, path='/')
     response.headers['Cache-Control'] = 'no-store'
-    identity = hashlib.sha256(token.encode()).hexdigest()
+    from app.auth import account_owner
+    identity = account_owner(request) or hashlib.sha256(token.encode()).hexdigest()
     if len(os.getenv('MAIL_SERVICE_KEY', '')) < 32:
         return [{'provider': p, 'configured': False, 'connected': False} for p in ('google', 'microsoft')]
     return [await gateway('status', {'owner': identity, 'provider': p}) for p in ('google', 'microsoft')]

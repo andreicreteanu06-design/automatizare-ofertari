@@ -26,6 +26,8 @@ data/
 *.eml
 output/
 exports/
+backups/
+restore-volumes.json
 
 # --- Baze de date și indexuri locale ---
 pgdata/

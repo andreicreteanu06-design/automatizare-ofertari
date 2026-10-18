@@ -1,4 +1,5 @@
 fastapi
+itsdangerous>=2.2,<3
 uvicorn
 httpx
 defusedxml

@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 
-test.beforeEach(async ({ page }) => { await page.route('**/api/sources', r => r.fulfill({ json: { sources: [], worker_active: true } })); });
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/auth/session', r => r.fulfill({json:{enabled:false,user:null}}));
+  await page.route('**/api/diagnostics', r => r.fulfill({json:{ok:true,services:[]}})); await page.route('**/api/sources', r => r.fulfill({ json: { sources: [], worker_active: true } })); });
 import { readFile } from 'node:fs/promises';
 test('PDFCraft starts locally inside the isolated editor', async ({ page }) => {
   test.setTimeout(90000);

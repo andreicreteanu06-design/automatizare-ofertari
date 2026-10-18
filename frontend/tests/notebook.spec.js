@@ -1,4 +1,9 @@
 import { test, expect } from '@playwright/test';
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/auth/session', r => r.fulfill({json:{enabled:false,user:null}}));
+  await page.route('**/api/diagnostics', r => r.fulfill({json:{ok:true,services:[]}}));
+
+});
 
 test('notebook shows indexed folders, citation passages, and explicit live mode', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });

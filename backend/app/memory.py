@@ -96,6 +96,10 @@ def get_store():
 
 
 def owner(request: Request):
+    from app.auth import account_owner
+    user = account_owner(request)
+    if user:
+        return user
     token = request.cookies.get(COOKIE, '')
     if len(token) < 40 or len(token) > 100:
         raise HTTPException(401, 'Spațiul browserului nu este inițializat. Creează o conversație.')
@@ -117,7 +121,8 @@ def create(body: ConversationIn, request: Request, response: Response, store=Dep
     token = request.cookies.get(COOKIE)
     if not token or not 40 <= len(token) <= 100:
         token = secrets.token_urlsafe(48)
-    result = store.create(hashlib.sha256(token.encode()).hexdigest(), body.project, body.title)
+    from app.auth import account_owner
+    result = store.create(account_owner(request) or hashlib.sha256(token.encode()).hexdigest(), body.project, body.title)
     response.set_cookie(COOKIE, token, httponly=True, samesite='strict',
                         secure=os.getenv('COOKIE_SECURE', 'false').lower() == 'true', max_age=365 * 86400, path='/')
     return result
@@ -125,7 +130,8 @@ def create(body: ConversationIn, request: Request, response: Response, store=Dep
 
 @router.get('')
 def listing(request: Request, store=Depends(get_store)):
-    if not request.cookies.get(COOKIE):
+    from app.auth import account_owner
+    if not account_owner(request) and not request.cookies.get(COOKIE):
         return []
     return store.list(owner(request))
 

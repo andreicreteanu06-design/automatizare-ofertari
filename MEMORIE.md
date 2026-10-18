@@ -6,7 +6,7 @@ Conversațiile, întrebările, răspunsurile cu dovezi și referințele comentat
 
 UI-ul restaurează cea mai recentă conversație și permite alegerea alteia. Lista are maximum 100 conversații, istoricul livrat are ultimele 100 tururi, iar rezolvarea referinței articolului folosește ultimele 12 mesaje. Tururile mai vechi rămân în DB, dar nu sunt încă paginate în UI. O conversație nouă nu preia contextul alteia, chiar dacă au același nume de proiect.
 
-Cookie-ul HttpOnly identifică spațiul browserului; un alt cookie nu poate accesa conversația după UUID. Nu este autentificare enterprise. Un browser comun înseamnă un spațiu comun. Ștergerea cookie-ului nu șterge DB, dar pierde accesul la istoricul asociat. Pentru utilizatori reali, integrarea cu identitatea organizației și politici de retenție rămâne necesară.
+În modul local (AUTH_ENABLED=false), cookie-ul HttpOnly identifică spațiul browserului. În modul autentificat, identitatea Google Workspace sau Microsoft 365 separă conversațiile și permite accesul din alt browser. Conturile celor doi furnizori nu sunt unite automat, iar conversațiile locale vechi nu sunt migrate automat. Biblioteca de documente rămâne comună. Configurare și limite: [BACKEND_OPERATIONS.md](BACKEND_OPERATIONS.md).
 
 ## Verificare strictă
 

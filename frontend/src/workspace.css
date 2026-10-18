@@ -193,3 +193,11 @@
   .shell .chat-stage-heading p { display: none; }
   .shell .technical-chat .branch-chat[data-state="idle"] [data-empty] { display: none; }
 }
+.login-page { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: #e8edf5; }
+.login-page > .card { max-width: 620px; padding: 36px; }
+.login-page h1 { font-size: 30px; margin-bottom: 16px; }
+.login-page p { margin: 16px 0; }
+.account-bar { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 16px; padding: 10px 24px; background: #f8fafc; color: #19304a; }
+.service-status { margin-bottom: 20px; padding: 16px 20px; }
+.service-status summary { cursor: pointer; font-weight: 600; }
+.service-status p { margin: 10px 0; }

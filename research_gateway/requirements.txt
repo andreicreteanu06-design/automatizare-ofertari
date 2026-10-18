@@ -1,4 +1,6 @@
 fastapi
+Authlib>=1.6,<2
+itsdangerous>=2.2,<3
 uvicorn
 httpx
 pyyaml

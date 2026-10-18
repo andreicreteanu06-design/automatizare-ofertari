@@ -58,7 +58,7 @@ Completează `IMAP_*` în `.env` pentru profilul `mail`. Pentru pornire fără t
 
 ```bash
 docker compose ps                                          # toate „running” / „healthy”
-curl -s 127.0.0.1:8080/api/health                          # {"ok":true}
+curl --fail 127.0.0.1:8080/api/ready                      # dependențe principale accesibile
 docker compose exec research-gateway python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8000/fx/bnr').read()[:120])"
 pip install -r requirements-dev.txt && pytest tests/test_memory_16gb.py -s   # bugetul de 16 GB, sub sarcină reală
 ```
@@ -70,7 +70,10 @@ Pune o factură e-Factura (XML/ZIP) în `data/inbox/invoices/` → în ~40 s apa
 
 Formatul datei și separatorul zecimal din XML-ul Saga nu sunt documentate public. În Saga:
 tipărește o factură de ieșire cu „Formular PDF” → copiază XML-ul din `C:\TEMP\Facturi` în
-`tests/fixtures/saga/` și rulează `pytest tests/test_saga.py`. Dacă testul trece, importul e sigur.
+`tests/fixtures/saga/` și rulează `pytest tests/test_saga.py`. Verifică apoi importul efectiv într-o firmă de test Saga; testul XML nu garantează acceptarea de către versiunea instalată.
+
+Pentru autentificare Microsoft 365 / Google Workspace, diagnosticul serviciilor, backup și
+probele de acceptanță, urmează [BACKEND_OPERATIONS.md](BACKEND_OPERATIONS.md).
 
 
 ## Live Web RAG opțional

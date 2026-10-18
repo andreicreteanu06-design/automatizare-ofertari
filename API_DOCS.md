@@ -25,6 +25,16 @@
 
 ## 1. `GET /health`
 
+`/health` este doar liveness. `GET /ready` verifică Postgres, Qdrant și catalogul Colibri;
+returnează 200/503 cu `{"ok":true/false}`. `GET /diagnostics` returnează `ok`, `services[]`
+(`id`, `label`, `status: ok|unavailable`, `required`) și o notă despre limitele verificării.
+Gateway-ul și heartbeat-ul source-watch apar ca servicii auxiliare. Nu se execută generare sau OCR.
+
+Cu `AUTH_ENABLED=true`, API-urile de business necesită cookie-ul HttpOnly `ofertare_identity`.
+`GET /auth/session` întoarce `enabled` și `user`; `GET /auth/{google|microsoft}/login` începe OIDC;
+`GET /auth/{provider}/callback` finalizează; `POST /auth/logout` șterge cookie-urile.
+Cererile de modificare necesită header Origin egal cu MAIL_PUBLIC_URL. Lipsa sesiunii produce 401.
+
 Verificare rapidă — backend-ul este viu.
 
 **Response `200`:**
@@ -80,7 +90,7 @@ Bucla are maximum trei încercări, crește `k` până la 10 și extinde determi
 - `GET /conversations/{uuid}` — proiect, titlu, versiune, ultimele 100 tururi (întrebare+răspuns) și ultimele 100 referințe salvate.
 - `POST /conversations/{uuid}/references`, body: `{"evidence_id":"<ID de 24 caractere hex din răspuns>","note":"Observație de revizuire"}` — salvează o dovadă deja prezentă în conversație și o notă de maximum 1000 caractere. Notele și corecțiile propuse nu sunt folosite ca fapte de către model.
 
-Conversațiile sunt izolate prin cookie-ul browserului și ID-ul conversației. Numele proiectului organizează conversațiile; nu este un mecanism de autentificare sau ACL. Pentru o implementare multiutilizator este necesară integrarea unei autentificări reale. Pierderea cookie-ului pierde accesul din acel browser; datele rămân în Postgres. Browserul păstrează doar cookie-ul, nu conversațiile în localStorage.
+Cu AUTH_ENABLED=true, conversațiile sunt izolate prin identitatea furnizorului (Google/Microsoft) și ID-ul conversației. În modul local implicit se folosește cookie-ul browserului. Proiectele organizează conversațiile, fără ACL pe folder. Vezi [BACKEND_OPERATIONS.md](BACKEND_OPERATIONS.md).
 
 La o întrebare fără cod, se caută ultimul cod explicit din ultimele 12 mesaje ale conversației curente. Afirmațiile asistentului și notițele nu intră în baza de dovezi; documentele sunt recuperate din nou. Dacă referința este ambiguă, utilizatorul trebuie să specifice codul.
 
