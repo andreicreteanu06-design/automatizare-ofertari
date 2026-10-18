@@ -90,3 +90,4 @@ Instalarea este destinată unei infrastructuri controlate de client, cu Docker �
 
 - [EMAIL_CONNECT.md](EMAIL_CONNECT.md) — conectare Google/Microsoft și trimiterea explicită a drafturilor.
 Foldere monitorizate și Google Drive: [DOCUMENT_SOURCES.md](DOCUMENT_SOURCES.md).
+Editor PDF local: [PDF_EDITOR.md](PDF_EDITOR.md).

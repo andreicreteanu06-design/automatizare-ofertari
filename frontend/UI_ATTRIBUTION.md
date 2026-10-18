@@ -15,3 +15,9 @@ Source: https://www.getlayers.ai/backgrounds?tier=free&layer=skylight-fish-swarm
 Downloaded 2026-10-18 from the displayed media. The gallery labels it free for
 commercial use. The supplied watermark is retained. Files in public/backgrounds/.
 Served locally, with pause and reduced-motion fallback.
+
+## PDFCraft editor
+Unmodified official web distribution v0.8.0 from https://github.com/storytold/pdfcraft/releases/tag/v0.8.0.
+MIT OR Apache-2.0; licenses, NOTICE, ATTRIBUTION and brand terms accompany the local bundle.
+ArtCraft branding remains inside the unmodified upstream editor, not the application's own branding.
+Integration and checksum: ../PDF_EDITOR.md.
