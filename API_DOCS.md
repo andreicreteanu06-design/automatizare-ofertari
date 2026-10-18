@@ -461,8 +461,8 @@ Generează un draft de e-mail către furnizor (cerere de ofertă sau clarificăr
 | `items[].unit`         | string              | nu          | `max_length=20`, default `"pcs"` | Unitate de măsură                                           |
 | `questions`      | array of string         | nu          | `max_length=10`, default `[]`     | Întrebări (obligatorii dacă `kind="clarification"`)         |
 | `reply_by`       | date \| null            | nu          | ISO 8601                          | Termen limită de răspuns                                    |
-| `sender_name`    | string                  | da          | `min_length=1, max_length=100`    | Numele expeditorului                                        |
-| `sender_company` | string                  | da          | `min_length=1, max_length=200`    | Compania expeditorului                                      |
+| `sender_name`    | string                  | nu          | implicit `""`, max_length=100     | Compatibilitate: numele expeditorului                                        |
+| `sender_company` | string                  | nu          | implicit `""`, max_length=200     | Compatibilitate: compania expeditorului                                      |
 
 > **⚠️ Nu există câmp `client_name` sau `project`.** Acesta este intenționat: e-mailurile către furnizori **nu au voie** să conțină numele clientului sau al proiectului. Egress Guard blochează orice astfel de divulgare.
 
@@ -625,3 +625,12 @@ Răspunsul include și `evidence_status` (`confirmed`, `unconfirmed`, `contradic
 
 Endpoint-urile OAuth și `POST /emails/send` sunt documentate în [EMAIL_CONNECT.md](EMAIL_CONNECT.md). Trimiterea necesită confirmare explicită și verificare Egress Guard; `accepted` indică acceptarea de către furnizor, nu livrarea.
 Biblioteca de documente: endpoint-urile /sources și configurarea sincronizării sunt descrise în [DOCUMENT_SOURCES.md](DOCUMENT_SOURCES.md).
+
+
+## Căutare articole pentru asistentul e-mail
+
+`GET /articles/search?q=rulment` caută o secvență literală din denumire sau codul furnizorului în `price_history` (2–200 caractere, fără diferențiere majuscule/minuscule). Returnează `{"items": [...]}`, maximum 20 de combinații cod/furnizor, cu cea mai recentă factură pentru fiecare. Câmpuri: `seller_code`, `name`, `unit_code`, `supplier`, `invoice_number`, `issue_date`. Nu folosește LLM și nu inventează articole. Lipsa rezultatelor nu dovedește absența produsului din toate documentele.
+
+În secțiunea e-mail, utilizatorul confirmă articolul înainte de precompletare; cantitatea și prețul istoric nu sunt transferate. Întrebările tehnice folosesc separat `/chat`, fără căutare web și fără istoric persistent în acest asistent. Descrierea și codul rezultate din textul liber al modelului nu sunt parsate pentru precompletare.
+
+Previzualizarea locală este orientativă și neverificată, fără apeluri API la fiecare tastă. Pentru alte limbi decât româna și engleza arată versiunea engleză până la generare. Doar răspunsul validat de `/emails/draft` poate fi trimis; modificarea conținutului anulează draftul validat. Semnătura nu mai este cerută în UI; câmpurile API rămân opționale pentru compatibilitate.

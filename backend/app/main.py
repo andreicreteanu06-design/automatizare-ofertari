@@ -176,6 +176,31 @@ async def prices(code: str = Query(min_length=2, max_length=64), lookup=Depends(
 
 # --- Ofertare (Faza 3) ---------------------------------------------------------------
 
+def get_article_search():
+    def run(query):
+        from psycopg.rows import dict_row
+        # Bound literal substring: %, _ and backslash are not user-controlled wildcards.
+        pattern = '%' + query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        with psycopg.connect(os.environ['DATABASE_URL'], row_factory=dict_row) as conn:
+            conn.execute("SET LOCAL statement_timeout = '3s'")
+            return conn.execute("""
+                SELECT DISTINCT ON (seller_code, supplier)
+                    seller_code, name, unit_code, supplier, invoice_number, issue_date
+                FROM price_history
+                WHERE NULLIF(TRIM(seller_code), '') IS NOT NULL
+                  AND (name ILIKE %(pattern)s OR seller_code ILIKE %(pattern)s)
+                ORDER BY seller_code, supplier, issue_date DESC NULLS LAST, invoice_number DESC
+                LIMIT 20
+            """, {'pattern': pattern}).fetchall()
+    return run
+
+
+@app.get('/articles/search')
+async def articles_search(q: str = Query(min_length=2, max_length=200), lookup=Depends(get_article_search)):
+    if len(q.strip()) < 2:
+        raise HTTPException(422, 'Introdu cel puțin două caractere pentru articol.')
+    return {'items': await run_in_threadpool(lookup, q.strip())}
+
 def get_fx():
     from app.quoting.fx import bnr_snapshot
     return bnr_snapshot

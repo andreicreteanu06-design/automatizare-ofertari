@@ -107,9 +107,6 @@ test('email clarification payload, translated preview and gateway error', async 
   await page.getByRole('button', { name: 'Draft e-mail' }).click();
   await page.getByLabel('Tip e-mail').selectOption('clarification');
   await page.getByLabel('Limba mesajului').selectOption('de');
-  await page.getByText('Semnătura expeditorului', { exact: true }).click();
-  await page.getByLabel('Numele expeditorului').fill('Ion');
-  await page.getByLabel('Compania expeditorului').fill('Firma SRL');
   await page.locator('.email-layout').getByLabel('Cod articol').fill('P1');
   await page.getByLabel('Întrebări tehnice').fill('Termen de livrare?');
   await page.getByRole('button', { name: 'Generează draftul' }).click();
@@ -118,7 +115,8 @@ test('email clarification payload, translated preview and gateway error', async 
   fail = true;
   await page.getByRole('button', { name: 'Generează draftul' }).click();
   await expect(page.getByRole('alert')).toContainText('503');
-  await expect(page.getByLabel('Subiect', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.draft-meta')).toContainText('neverificată');
+  await expect(page.getByRole('button', { name: 'Trimite e-mailul', exact: true })).toHaveCount(0);
 });
 test('mobile layout fits viewport and tabs retain state', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

@@ -11,12 +11,46 @@ test.beforeEach(async ({ page }) => {
 
 async function draft(page) {
   await page.goto('/#email');
-  await page.getByText('Semnătura expeditorului', { exact: true }).click();
-  await page.getByLabel('Numele expeditorului').fill('Ion');
-  await page.getByLabel('Compania expeditorului').fill('Firma');
   await page.locator('.email-layout').getByLabel('Cod articol').fill('P1');
   await page.getByRole('button', { name: 'Generează draftul' }).click();
 }
+
+test('instant preview, grounded article selection, and stale draft cannot be sent', async ({ page }) => {
+  let generations = 0;
+  await page.route('**/api/emails/draft', r => {
+    generations++;
+    expect(r.request().postDataJSON()).not.toHaveProperty('sender_name');
+    return r.fulfill({ json: { language: 'ro', subject: 'Cerere BRG-42', body: 'BRG-42 verificat', translated: false } });
+  });
+  await page.route('**/api/articles/search?*', r => r.fulfill({ json: { items: [{ seller_code: 'BRG-42', name: 'Rulment motor', unit_code: 'pcs', supplier: 'Supplier', invoice_number: 'F123', issue_date: '2026-01-02', quantity: 999 }] } }));
+  await page.route('**/api/chat', r => {
+    expect(r.request().postDataJSON().live_web).toBe(false);
+    return r.fulfill({ json: { answer: 'Verifică diametrul în fișa tehnică [motor:2].', citations: [{ doc_id: 'motor', page: 2 }], exact: [] } });
+  });
+  await page.goto('/#email');
+  await expect(page.getByLabel('Numele expeditorului')).toHaveCount(0);
+  await page.getByText('Nu știi codul? Te ajută asistentul.', { exact: true }).click();
+  await page.getByLabel('Denumire articol sau întrebare').fill('rulment');
+  await page.getByRole('button', { name: 'Caută în facturi' }).click();
+  await expect(page.locator('.article-suggestion')).toContainText('F123');
+  await page.getByRole('button', { name: 'Adaugă în e-mail' }).click();
+  await expect(page.locator('.email-layout').getByLabel('Cod articol')).toHaveValue('BRG-42');
+  await expect(page.locator('.email-layout').getByLabel('Cantitate · opțional')).toHaveValue('');
+  await expect(page.getByLabel('Subiect', { exact: true })).toHaveValue('Cerere de ofertă – BRG-42');
+  await expect(page.locator('#draft-body')).toHaveValue(/Rulment motor/);
+  expect(generations).toBe(0);
+  await page.getByLabel('Denumire articol sau întrebare').fill('Ce diametru are rulmentul?');
+  await page.getByRole('button', { name: 'Întreabă documentele' }).click();
+  await expect(page.locator('.email-assistant-history')).toContainText('motor · p. 2');
+  await page.getByRole('button', { name: 'Generează draftul' }).click();
+  await expect(page.locator('.draft-meta')).toContainText('verificat');
+  await page.locator('.email-layout').getByLabel('Cantitate · opțional').fill('4');
+  await expect(page.locator('.draft-meta')).toContainText('neverificată');
+  await expect(page.getByRole('button', { name: 'Trimite e-mailul', exact: true })).toHaveCount(0);
+  await page.getByLabel('Limba mesajului').selectOption('zh-CN');
+  await expect(page.locator('.preview-guidance')).toContainText('Previzualizare în engleză');
+  await page.screenshot({ path: test.info().outputPath('email-assistant-preview.png'), fullPage: true });
+});
 
 test('provider logos and explicit send with exact preview and no duplicate', async ({ page }) => {
   let sends = 0;

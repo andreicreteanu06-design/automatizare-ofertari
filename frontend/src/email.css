@@ -1,0 +1,23 @@
+.shell .email-safety-note { display: flex; gap: 14px; padding: 20px; border: 1px solid #d8b77a; border-left: 5px solid #9b681c; border-radius: 16px; background: #fff8e9; color: #543c1c; }
+.email-safety-note svg { flex-shrink: 0; margin-top: 3px; }
+.shell .email-safety-note strong { display: block; font-size: 17px; margin-bottom: 6px; }
+.shell .email-safety-note p { color: #543c1c; font-size: 15px; line-height: 1.65; margin: 0; }
+.shell .email-assistant { padding: 18px; margin-bottom: 24px; border: 1px solid #b4cecf; border-radius: 14px; background: #edf6f5; color: #173e42; }
+.email-assistant summary { display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 650; min-height: 40px; }
+.email-assistant summary::after { content: '+'; margin-left: auto; font-size: 22px; }
+.email-assistant[open] summary::after { content: '−'; }
+.email-assistant p { margin: 10px 0; }
+.email-assistant small { display: block; line-height: 1.5; }
+.email-assistant-history { max-height: 420px; overflow: auto; overflow-wrap: anywhere; }
+.assistant-question { background: #dbeceb; padding: 10px 16px; border-radius: 12px; margin: 12px 0 12px 24px; }
+.assistant-answer { padding: 8px 0; }
+.article-suggestion { border: 1px solid #b4cecf; border-radius: 12px; padding: 14px; margin: 12px 0; background: white; }
+.article-suggestion .btn { margin-top: 12px; }
+.assistant-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+.shell .draft-preview { align-self: start; border-top: 4px solid #257b75; }
+.shell .draft-meta { background: #fff5df; color: #6b4b16; padding: 10px 14px; border-radius: 10px; font-weight: 600; }
+.shell .draft-meta.verified { background: #e6f3ec; color: #20523c; }
+.shell .preview-guidance { font-size: 14px; line-height: 1.6; color: #425875; margin-top: 14px; }
+.shell .draft-preview .draft-body { font-size: 15px; line-height: 1.7; background: #fff; }
+@media (min-width: 1200px) { .shell .draft-preview { position: sticky; top: 24px; } }
+@media (max-width: 1199px) { .shell .email-layout { display: flex; flex-direction: column; } .shell .email-layout > * { width: 100%; } .shell .draft-preview { order: -1; } .shell .draft-preview .draft-body { height: 220px; } }

@@ -46,8 +46,8 @@ class EmailDraftIn(BaseModel):
     items: list[EmailItem] = Field(min_length=1, max_length=50)
     questions: list[str] = Field([], max_length=10)
     reply_by: date | None = None
-    sender_name: str = Field(min_length=1, max_length=100)
-    sender_company: str = Field(min_length=1, max_length=200)
+    sender_name: str = Field("", max_length=100)
+    sender_company: str = Field("", max_length=200)
 
 
 # --- Șabloane deterministe -----------------------------------------------------------
@@ -89,7 +89,8 @@ def template(req, lang):
     if req.reply_by:
         d = req.reply_by.strftime("%d.%m.%Y")
         body += f"\n\n{'Vă rugăm să ne răspundeți până la' if ro else 'Please reply by'} {d}."
-    body = f"{greeting}\n\n{body}\n\n{'Cu stimă' if ro else 'Kind regards'},\n{req.sender_name}\n{req.sender_company}"
+    closing = "\n".join(filter(None, ["Cu stimă," if ro else "Kind regards,", req.sender_name, req.sender_company]))
+    body = f"{greeting}\n\n{body}\n\n{closing}"
     return subject, body
 
 

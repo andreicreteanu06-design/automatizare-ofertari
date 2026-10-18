@@ -151,7 +151,7 @@ def test_think_block_stripped_from_translation(make):
     assert client.post("/emails/draft", json={**BASE, "language": "de"}).status_code == 200
 
 
-@pytest.mark.parametrize("bad", [{"language": "xx"}, {"items": []}, {"kind": "spam"}, {"sender_name": ""}])
+@pytest.mark.parametrize("bad", [{"language": "xx"}, {"items": []}, {"kind": "spam"}, {"sender_name": "x" * 101}])
 def test_validation(make, bad):
     client, _, _ = make()
     assert client.post("/emails/draft", json={**BASE, **bad}).status_code == 422
@@ -185,3 +185,12 @@ def test_new_languages_reach_translator_and_guard(make, lang, target, greeting):
     assert response.json()["body"].startswith(greeting)
     assert f"into {target}" in llm.requests[0]["messages"][0]["content"]
     assert len(gw.calls) == 2
+
+
+def test_signature_optional_but_guard_still_required(make):
+    client, gw, _ = make()
+    request = {k: v for k, v in BASE.items() if k not in ('sender_name', 'sender_company')}
+    response = client.post('/emails/draft', json=request)
+    assert response.status_code == 200
+    assert response.json()['body'].endswith('Cu stimă,')
+    assert gw.calls == [[response.json()['subject'], response.json()['body']]]
