@@ -17,7 +17,10 @@ export async function api(path, body, binary = false) {
   } catch { throw new Error('Conexiunea cu serverul a eșuat. Verifică rețeaua internă și încearcă din nou.'); }
   if (!response.ok) {
     const data = await response.json().catch(() => null);
-    const error = new Error(`HTTP ${response.status} · ${data ? errorText(data.detail || data) : 'Serviciul nu este disponibil.'}`);
+    const fallback = response.status === 502
+      ? 'Serverul aplicației nu poate fi contactat. Verifică dacă serviciile Docker sunt pornite și backend-ul este disponibil.'
+      : 'Serviciul nu este disponibil.';
+    const error = new Error(`HTTP ${response.status} · ${data ? errorText(data.detail || data) : fallback}`);
     error.status = response.status;
     error.detail = data?.detail;
     throw error;

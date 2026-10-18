@@ -10,7 +10,7 @@ test('PDFCraft starts locally inside the isolated editor', async ({ page }) => {
   await page.route('**/api/emails/accounts', r=>r.fulfill({json:[]}));
   await page.goto('/#pdf');
   await page.getByRole('button',{name:'Deschide editorul PDF'}).click();
-  const frame=page.frameLocator('iframe[title="Editor PDFCraft"]');
+  const frame=page.frameLocator('iframe[title="Editor PDF"]');
   await expect(frame.locator('canvas')).toBeVisible();
   await expect.poll(()=>frame.locator('canvas').getAttribute('width'),{timeout:60000}).not.toBeNull();
   await page.screenshot({path:'test-results/pdf-editor.png',fullPage:true});

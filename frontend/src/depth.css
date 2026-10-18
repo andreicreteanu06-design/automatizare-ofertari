@@ -21,6 +21,7 @@
 .shell .chat-focus .conversation-history { background: #191426; border-bottom-color: #40354f; }
 .shell .chat-focus .conversation-history h2, .shell .chat-focus .chat-settings > summary { color: #d5cee7; text-shadow: none; }
 .shell .chat-focus .conversation-history .btn, .shell .chat-focus .conversation-bar button { color: #e8e3f7; background: #282035; border-color: #564969; }
+.shell .chat-focus .conversation-history .btn.secondary:is(:hover, :focus-visible, :active):not(:disabled) { color: #fff; background: #40324f; border-color: #b9a5da; }
 .shell .chat-focus .conversation-bar button[aria-current="true"] { background: #ddd6f9; color: #211931; }
 .shell .chat-focus .chat-settings { color: #d5cee7; }
 .shell .chat-focus .chat-settings .field { color: #d5cee7; }
