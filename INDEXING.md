@@ -52,6 +52,12 @@ Pot fi descărcați mai mulți GB. Dacă apare o eroare DNS, repară rețeaua Do
 apoi reia descărcarea, fără ștergerea cache-ului. O descărcare oprită înainte de
 final nu dovedește că modelele sunt pregătite.
 
+BGE-M3 se verifică și se încarcă din fișierele locale necesare inferenței, inclusiv
+capetele ColBERT și sparse ale modelului. Exporturile ONNX omise la descărcare nu sunt
+necesare. Versiunile noi `huggingface_hub` pot raporta `IncompleteSnapshotError`
+la o verificare a întregului repo, chiar dacă numai acele exporturi lipsesc.
+De aceea verificarea și încărcarea folosesc același director local validat.
+
 ## Eliminare din index
 
 DELETE pentru fișier/folder înscrie imediat excluderea din căutări. Workerul șterge

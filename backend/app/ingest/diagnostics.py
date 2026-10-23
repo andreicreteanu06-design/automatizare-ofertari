@@ -43,13 +43,9 @@ def check_runtime():
         return f'{count} fișiere de greutăți; compatibilitatea se verifică la conversie'
     record('Modele Docling', docling_models)
     def bge_models():
-        from huggingface_hub import snapshot_download
-        folder = Path(snapshot_download(os.getenv('BGE_M3_MODEL', 'BAAI/bge-m3'), local_files_only=True))
-        if not (folder / 'config.json').is_file() or not any((folder / p).is_file() for p in ('model.safetensors', 'pytorch_model.bin')):
-            raise FileNotFoundError('weights')
-        if not any((folder / p).is_file() for p in ('tokenizer.json', 'sentencepiece.bpe.model')):
-            raise FileNotFoundError('tokenizer')
-        return 'cache local prezent'
+        from app.rag.model_cache import cached_bge_model
+        cached_bge_model(os.getenv('BGE_M3_MODEL', 'BAAI/bge-m3'))
+        return 'fișiere locale de inferență prezente; exporturile ONNX nu sunt necesare'
     record('Modele BGE-M3', bge_models)
     def qdrant():
         from app.rag.index import qdrant_client

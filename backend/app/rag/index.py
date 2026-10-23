@@ -15,7 +15,10 @@ class BgeM3:
 
     def __init__(self, model=os.environ.get("BGE_M3_MODEL", "BAAI/bge-m3")):
         from FlagEmbedding import BGEM3FlagModel
-        self._model = BGEM3FlagModel(model, use_fp16=False, devices="cpu")
+        from app.rag.model_cache import cached_bge_model
+        # Pass a local path so FlagEmbedding does not request optional ONNX
+        # exports from the read-only offline cache through snapshot_download.
+        self._model = BGEM3FlagModel(str(cached_bge_model(model)), use_fp16=False, devices="cpu")
 
     def embed(self, texts):
         """[(dense: list[float], sparse: {token_id: pondere})] pentru fiecare text."""
