@@ -24,3 +24,13 @@ CREATE TABLE IF NOT EXISTS chat_reference (
     note text NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS chat_correction (
+    id uuid PRIMARY KEY,
+    conversation_id uuid NOT NULL REFERENCES chat_conversation ON DELETE CASCADE,
+    request_id uuid NOT NULL,
+    query text NOT NULL,
+    rejected_evidence jsonb NOT NULL,
+    note text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(conversation_id, request_id)
+);

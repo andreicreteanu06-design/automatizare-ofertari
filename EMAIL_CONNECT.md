@@ -11,6 +11,40 @@ Administratorul înregistrează o aplicație OAuth la fiecare furnizor dorit.
 Utilizatorul se conectează apoi prin buton, în pagina furnizorului; aplicația nu
 cere parola căsuței. Toate valorile de mai jos rămân exclusiv în `.env` local.
 
+### Configurare asistată în Ubuntu
+
+În secțiunea Draft e-mail, extinde „Configurează Google” sau „Configurează Microsoft”.
+Lista indică numele setărilor lipsă sau invalide, fără valorile secrete. Dacă serviciul
+e-mail nu răspunde, acest lucru este raportat separat; nu presupune că lipsesc
+credențialele. Disponibilitatea configurării nu dovedește că furnizorul va accepta
+datele: autorizarea reală rămâne necesară.
+
+După înregistrarea aplicației conform pașilor de mai jos, în directorul proiectului:
+
+```bash
+python3 scripts/configure_email.py --provider google
+# Sau, separat, pentru contul Microsoft:
+python3 scripts/configure_email.py --provider microsoft
+```
+
+Comanda folosește doar biblioteca standard Python. Cere adresa aplicației, Client ID
+și Client Secret (ascuns la tastare) și afișează Redirect URI exact. Pentru Microsoft
+cere și tenantul. Nu folosi parola contului sau Secret ID în loc de valoarea secretului.
+Păstrează cheile de serviciu/criptare existente și configurația celuilalt furnizor;
+generează chei numai dacă lipsesc. Refuză înlocuirea automată a cheilor invalide.
+Salvează atomic `.env` cu permisiuni 0600 și creează o copie privată `.env.email-backup-*`,
+ignorată de git. Nu publica niciunul dintre aceste fișiere. Dacă proiectul se află pe
+un disc Windows cu permisiuni diferite, folosește copia proiectului din ext4/Ubuntu.
+
+```bash
+docker compose --profile ui up -d --build backend research-gateway frontend
+```
+
+Profilul `mail` nu este necesar pentru OAuth/trimitere: acesta pornește separat
+serviciile IMAP. Gateway-ul necesită o `config/denylist.yaml` validă cu termenii
+confidențiali ai clientului; nu înlocui lista cu termeni inventați ca să pornească.
+Dacă nu pornește, verifică `docker compose logs --tail=40 research-gateway`.
+
 ```dotenv
 MAIL_PUBLIC_URL=http://127.0.0.1:8080
 MAIL_SERVICE_KEY=
@@ -54,7 +88,7 @@ portul Docker pe loopback. În dezvoltare configurează originea serverului Vite
 cu proxy `/api`; `vite preview` nu oferă acel proxy.
 
 ```bash
-docker compose --profile ui --profile mail up -d --build
+docker compose --profile ui up -d --build backend research-gateway frontend
 ```
 
 Accesează aplicația, conectează contul, autorizează-l în tabul furnizorului și revino

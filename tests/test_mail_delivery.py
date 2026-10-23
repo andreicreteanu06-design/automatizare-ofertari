@@ -101,6 +101,39 @@ def test_internal_auth_and_configuration(setup, monkeypatch):
     assert setup.post('/mail/status', json=account()).json()['configured'] is False
 
 
+def test_status_identifies_missing_and_invalid_settings_without_secrets(setup, monkeypatch):
+    monkeypatch.delenv('GOOGLE_CLIENT_SECRET')
+    monkeypatch.setenv('MAIL_TOKEN_KEY', 'invalid-private-key')
+    status = setup.post('/mail/status', json=account()).json()
+    assert not status['configured']
+    assert status['setup']['missing_settings'] == ['GOOGLE_CLIENT_SECRET']
+    assert status['setup']['invalid_settings'] == ['MAIL_TOKEN_KEY']
+    assert status['setup']['redirect_uri'] == 'http://127.0.0.1:8080/api/emails/accounts/google/callback'
+    assert not any(value in str(status) for value in ('synthetic-secret', 'test-client', 'invalid-private-key'))
+
+
+@pytest.mark.parametrize('public', ['https://', 'https://user:secret@example.com', 'http://192.168.1.5:8080', 'https://example.com/app', 'https://example.com:invalid'])
+def test_invalid_public_url_hides_callback_and_blocks_connect(setup, monkeypatch, public):
+    monkeypatch.setenv('MAIL_PUBLIC_URL', public)
+    status = setup.post('/mail/status', json=account()).json()
+    assert not status['configured']
+    assert status['setup']['redirect_uri'] is None
+    assert status['setup']['invalid_settings'] == ['MAIL_PUBLIC_URL']
+    assert setup.post('/mail/connect', json=account()).status_code == 503
+
+
+def test_backend_reports_missing_service_key_without_network(monkeypatch):
+    from app import mail_accounts
+    monkeypatch.setenv('AUTH_ENABLED', 'false')
+    monkeypatch.delenv('MAIL_SERVICE_KEY', raising=False)
+    async def fail(*args):
+        pytest.fail('Missing key must be diagnosed locally')
+    monkeypatch.setattr(mail_accounts, 'gateway', fail)
+    app = FastAPI(); app.include_router(mail_accounts.router)
+    status = TestClient(app).get('/emails/accounts').json()
+    assert all(s['setup']['missing_settings'] == ['MAIL_SERVICE_KEY'] and not s['configured'] for s in status)
+
+
 @pytest.mark.parametrize('provider', ['google', 'microsoft'])
 def test_oauth_pkce_binding_replay_and_encrypted_storage(setup, monkeypatch, provider):
     query = parse_qs(urlsplit(setup.post('/mail/connect', json=account(provider)).json()['url']).query)

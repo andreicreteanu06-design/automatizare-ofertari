@@ -201,3 +201,13 @@
 .service-status { margin-bottom: 20px; padding: 16px 20px; }
 .service-status summary { cursor: pointer; font-weight: 600; }
 .service-status p { margin: 10px 0; }
+
+.source-file-heading { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.source-file-heading strong { min-width: 0; }
+.source-file-heading .icon-button { flex-shrink: 0; }
+.mail-setup { margin-top: 16px; font-size: 14px; overflow-wrap: anywhere; }
+.mail-setup summary { cursor: pointer; font-weight: 600; }
+.mail-setup ol { list-style: decimal; padding-left: 22px; }
+.mail-setup li { margin: 12px 0; }
+.mail-setup a { text-decoration: underline; }
+.mail-callback { display: block; margin-top: 8px; }

@@ -124,11 +124,16 @@ def convert_pdf(path, ocr=False):
     structura tabelelor tehnice contează mai mult decât viteza.
     Rulează offline: modelele vin din DOCLING_ARTIFACTS_PATH (vezi serviciul model-fetch)."""
     from docling.datamodel.base_models import InputFormat
-    from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
+    from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode, TesseractCliOcrOptions
+    from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
     from docling.document_converter import DocumentConverter, PdfFormatOption
 
     opts = PdfPipelineOptions(do_ocr=ocr, do_table_structure=True,
                               artifacts_path=os.environ.get("DOCLING_ARTIFACTS_PATH"))
+    opts.accelerator_options = AcceleratorOptions(device=AcceleratorDevice.CPU, num_threads=2)
+    if ocr:
+        # Explicit offline engine: no automatic OCR-model download in the worker.
+        opts.ocr_options = TesseractCliOcrOptions(lang=['ron', 'eng'], force_full_page_ocr=True)
     opts.table_structure_options.mode = TableFormerMode.ACCURATE
     opts.table_structure_options.do_cell_matching = True
     converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts)})

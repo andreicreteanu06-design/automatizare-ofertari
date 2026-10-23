@@ -1,4 +1,7 @@
 /* One reading surface: history stays secondary to the conversation. */
+.shell .chat-focus p.correction-memory { color: #312942; background: #e9e2f2; border-radius: 8px; padding: 8px 12px; margin-top: 12px; font-size: 14px; }
+.shell .chat-focus .chat-correction { color: #26364c; background: #f9fafc; }
+.shell .chat-focus .chat-correction p { color: #526176; margin: 12px 0; }
 .shell .technical-chat.chat-focus {
   --accent: #176459;
   max-width: 1120px;

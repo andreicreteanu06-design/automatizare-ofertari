@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { FolderOpen, Upload, RefreshCw, Cloud, FolderPlus } from 'lucide-react';
-import { api, errorText } from './api';
+import { api } from './api';
 import { Button, Card, ErrorBox, Field } from './ui';
+import { sourceMutation as mutate } from './sourceActions';
+import RemoveSource from './RemoveSource';
 
 const labels = { ready: 'Actualizat', pending: 'În așteptare', indexing: 'Se procesează', indexed: 'Disponibil în chat', error: 'Necesită verificare', attention: 'Unele fișiere au erori', removed: 'Eliminat din căutare' };
 const formats = ['pdf', 'docx', 'xlsx', 'txt', 'md', 'csv'];
-async function mutate(path, body, binary = false) {
-  const response = await fetch('/api/sources' + path, { method: 'POST', headers: { 'X-Source-Action': '1', 'Content-Type': binary ? 'application/octet-stream' : 'application/json' }, body: binary ? body : JSON.stringify(body) });
-  const data = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(errorText(data?.detail) || 'Operația a eșuat.');
-  return data;
-}
 
 export default function Sources() {
   const [data, setData] = useState(null);
@@ -23,6 +19,7 @@ export default function Sources() {
   const [driveId, setDriveId] = useState('');
   const [progress, setProgress] = useState('');
   const picker = useRef(null);
+  const library = useRef(null);
   const limits = data?.limits;
   const mb = bytes => Math.round(bytes / 1024 ** 2).toLocaleString('ro-RO');
   async function refresh() {
@@ -39,6 +36,14 @@ export default function Sources() {
     try { await mutate('', source); setNotice('Sursă adăugată. Fișierele vor apărea în chat după indexare.'); await refresh(); }
     catch (e) { setError(e.message); } finally { setBusy(false); }
   }
+  async function retry(source) {
+    setBusy(true); setError('');
+    try {
+      const result = await mutate(`/${source.id}/retry`, {});
+      setNotice(`${result.queued} documente pregătite pentru reîncercare. Procesarea continuă pe server.`);
+      await refresh();
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  }
   async function upload(event) {
     const all = Array.from(event.target.files || []);
     const files = all.filter(f => formats.includes(f.name.split('.').pop().toLowerCase()));
@@ -49,14 +54,17 @@ export default function Sources() {
     let sid;
     let completed = 0;
     try {
-      const name = files[0].webkitRelativePath.split('/')[0] || 'Documente încărcate';
+      const name = (files[0].webkitRelativePath || '').split('/')[0] || 'Documente încărcate';
       sid = (await mutate('', { kind: 'upload', name })).id;
+      await refresh();
+      library.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       for (const file of files) {
         setProgress(`Se încarcă ${completed + 1} din ${files.length}: ${file.name}`);
         await mutate(`/${sid}/upload?path=${encodeURIComponent(file.webkitRelativePath || file.name)}`, file, true);
         completed++;
+        if (completed === 1 || completed % 10 === 0) await refresh();
       }
-      setNotice(`${completed} fișiere încărcate. ${all.length - files.length} fișiere cu alte formate au fost omise. Indexarea continuă pe server.`);
+      setNotice(`${completed} fișiere încărcate. ${all.length - files.length} fișiere cu alte formate au fost omise. Le poți vedea mai jos; devin disponibile în chat după procesare.`);
     } catch (e) { setError(`${e.message} ${completed} fișiere au fost încărcate; sursa rămâne în listă.`); }
     finally { setBusy(false); setProgress(''); event.target.value = ''; await refresh(); }
   }
@@ -69,6 +77,24 @@ export default function Sources() {
         <Button secondary disabled={busy} onClick={refresh}><RefreshCw size={18}/>Actualizează starea</Button>
       </div>
       <p className="note mt-4">Pentru arhiva departamentului, conectează un folder monitorizat: documentele rămân pe discul clientului și modificările se preiau automat. Încărcarea din browser salvează o copie.</p>
+    </Card>
+    {progress && <p role="status">{progress}</p>}{notice && <p role="status" className="success">{notice}</p>}<ErrorBox error={error}/>
+    {data && !data.worker_active && <div className="warning">Procesarea documentelor este oprită. Folderele și fișierele încărcate rămân vizibile, dar vor fi disponibile în chat după repornirea procesării.</div>}
+    {data?.cleanup_pending > 0 && <p className="note">Curățarea indexului pentru documentele eliminate este în curs. Ele sunt deja excluse din căutările noi; curățarea se finalizează când serviciile de procesare și index sunt disponibile.</p>}
+    <section ref={library} className="source-catalog space-y-5" aria-label="Foldere adăugate">
+      {data?.sources.length === 0 && <Card title="Biblioteca ta începe aici"><p>Încarcă un folder sau conectează o sursă pentru actualizare automată.</p></Card>}
+      {data?.sources.map(source => {
+        const total = Object.entries(source.counts).reduce((sum, [status, count]) => sum + (status === 'removed' ? 0 : count), 0);
+        return <Card key={source.id} title={source.name} subtitle={`${({ local: 'Folder monitorizat', upload: 'Copie încărcată', drive: 'Google Drive · Workspace CLI' })[source.kind]} · ${labels[source.status] || source.status}`}
+          action={<RemoveSource source={source} disabled={busy} onError={setError} onRemoved={async () => { setNotice('Folder eliminat din bibliotecă și din căutările noi.'); await refresh(); }} />}>
+          <p>{total} fișiere în bibliotecă · {source.counts.indexed || 0} documente indexate · ultima verificare: {source.checked ? new Date(source.checked * 1000).toLocaleString('ro-RO') : 'în așteptare'}</p><ErrorBox error={source.error}/>
+          {(source.counts.error > 0 || source.status === 'error') && <Button secondary disabled={busy} onClick={() => retry(source)}><RefreshCw size={16}/>Reîncearcă indexarea</Button>}
+          {!source.files.length && <p>Folder adăugat. Fișierele vor apărea aici pe măsură ce sunt încărcate sau descoperite la prima verificare.</p>}
+          {!!source.files.length && <details className="advanced-options" open><summary>Vezi documentele și starea lor</summary><p>Ultimele 50 de documente. Fișierele modificate se reprocesează; cele șterse sunt retrase din căutările noi.</p>{source.files.map(file => <div className="source-file" key={file.path}><div className="source-file-heading"><strong>{file.path}</strong><RemoveSource source={source} file={file} disabled={busy} onError={setError} onRemoved={async () => { setNotice('Document eliminat. Folderul și celelalte documente sunt păstrate.'); await refresh(); }}/></div><span>{labels[file.status] || file.status}</span><small>{file.doc_id}</small>{file.error && <p>{file.error}</p>}</div>)}</details>}
+        </Card>;
+      })}
+    </section>
+    <Card title="Alte surse de documente" subtitle="Conectează foldere locale sau Google Drive pentru actualizare automată.">
       <details className="advanced-options" onToggle={e => { if (e.currentTarget.open) browse(''); }}><summary><FolderOpen size={18}/>Conectează un folder monitorizat</summary>
         <p>Administratorul pune directoarele de lucru în folderul autorizat prin configurarea Docker. Originalele sunt accesate doar pentru citire. Verificarea are loc la aproximativ 30 de secunde, între procesări.</p>
         <div className="source-actions"><Button secondary disabled={!browsePath || busy} onClick={() => browse(browsePath.split('/').slice(0, -1).join('/'))}>Înapoi</Button><span>{browsePath || 'Foldere autorizate'}</span></div>
@@ -77,12 +103,5 @@ export default function Sources() {
       </details>
       <details className="advanced-options"><summary><Cloud size={18}/>Conectează un folder Google Drive</summary><p>Necesită configurarea serviciului Workspace CLI de către administrator și acces de citire la folder. Nu încarcă documentele locale în Google.</p><div className="form-grid mt-4"><Field label="Numele sursei Drive" value={driveName} onChange={setDriveName} maxLength={100}/><Field label="ID folder Google Drive" value={driveId} onChange={setDriveId} maxLength={200} placeholder="ID-ul de după /folders/ din adresă"/></div><div className="mt-4"><Button disabled={busy || !driveName.trim() || !/^[A-Za-z0-9_-]{10,200}$/.test(driveId)} onClick={() => add({ kind: 'drive', name: driveName.trim(), path: driveId })}>Conectează Google Drive</Button></div></details>
     </Card>
-    {progress && <p role="status">{progress}</p>}{notice && <p role="status" className="success">{notice}</p>}<ErrorBox error={error}/>
-    {data && !data.worker_active && <div className="warning">Monitorizarea nu este activă momentan. Administratorul trebuie să pornească serviciul source-watch. Fișierele din aceste surse nu sunt folosite în răspunsuri cât timp serviciul este oprit.</div>}
-    {data?.sources.length === 0 && <Card title="Biblioteca ta începe aici"><p>Încarcă un folder sau conectează o sursă pentru actualizare automată.</p></Card>}
-    {data?.sources.map(source => <Card key={source.id} title={source.name} subtitle={`${({ local: 'Folder monitorizat', upload: 'Copie încărcată', drive: 'Google Drive · Workspace CLI' })[source.kind]} · ${labels[source.status] || source.status}`}>
-      <p>{source.counts.indexed || 0} documente indexate · ultima verificare: {source.checked ? new Date(source.checked * 1000).toLocaleString('ro-RO') : 'în așteptare'}</p><ErrorBox error={source.error}/>
-      <details className="advanced-options"><summary>Vezi documentele și starea lor</summary><p>Ultimele 50 de documente. Fișierele modificate se reprocesează; cele șterse sunt retrase din căutările noi.</p>{source.files.map(file => <div className="source-file" key={file.path}><strong>{file.path}</strong><span>{labels[file.status] || file.status}</span><small>{file.doc_id}</small>{file.error && <p>{file.error}</p>}</div>)}</details>
-    </Card>)}
   </div>;
 }

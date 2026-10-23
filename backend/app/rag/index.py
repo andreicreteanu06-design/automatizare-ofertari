@@ -15,7 +15,10 @@ class BgeM3:
 
     def __init__(self, model=os.environ.get("BGE_M3_MODEL", "BAAI/bge-m3")):
         from FlagEmbedding import BGEM3FlagModel
-        self._model = BGEM3FlagModel(model, use_fp16=False, devices="cpu")
+        from app.rag.model_cache import cached_bge_model
+        # Pass a local path so FlagEmbedding does not request optional ONNX
+        # exports from the read-only offline cache through snapshot_download.
+        self._model = BGEM3FlagModel(str(cached_bge_model(model)), use_fp16=False, devices="cpu")
 
     def embed(self, texts):
         """[(dense: list[float], sparse: {token_id: pondere})] pentru fiecare text."""
@@ -51,7 +54,7 @@ def _doc_filter(doc_id):
 def index_chunks(client, embedder, chunks, meta):
     """(Re)indexează un document: șterge versiunea veche, apoi upsert. Idempotent."""
     ensure_collection(client, embedder.dim)
-    client.delete(COLLECTION, points_selector=models.FilterSelector(filter=_doc_filter(meta.doc_id)))
+    client.delete(COLLECTION, points_selector=models.FilterSelector(filter=_doc_filter(meta.doc_id)), wait=True)
     if not chunks:
         return
     vectors = embedder.embed(c.text for c in chunks)

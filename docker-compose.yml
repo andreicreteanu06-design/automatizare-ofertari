@@ -221,7 +221,7 @@ services:
     image: ofertare-backend
     profiles: [setup]
     networks: [egress]
-    command: [sh, -c, "huggingface-cli download BAAI/bge-m3 && docling-tools models download -o /models/docling"]
+    command: [python, -c, "from huggingface_hub import snapshot_download; import subprocess; snapshot_download('BAAI/bge-m3', ignore_patterns=['onnx/*']); subprocess.run(['docling-tools', 'models', 'download', '-o', '/models/docling'], check=True)"]
     volumes:
       - ./data/hf-cache:/root/.cache/huggingface
       - ./data/docling-models:/models/docling
@@ -343,4 +343,5 @@ services:
       - "127.0.0.1:8080:80"
     depends_on:
       backend: { condition: service_healthy }
+      source-watch: { condition: service_started }
     restart: unless-stopped

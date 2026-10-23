@@ -7,13 +7,43 @@ existent (de exemplu `C:/DocumenteClient` sau `/srv/documente-client`). Subfolde
 sale apar în selectorul aplicației. Montarea Docker este read-only.
 
 ```bash
-docker compose --profile ui --profile mail up -d --build
+docker compose --profile ui up -d --build frontend
 ```
 
-Serviciul `source-watch` pornește automat. Necesită modelele locale de embeddings
+Serviciul `source-watch` este o dependență a interfeței și pornește inclusiv când
+este selectat explicit numai `frontend`. Profilul `mail` se activează separat, după
+configurarea conturilor de e-mail. Necesită modelele locale de embeddings
 și Docling pregătite conform LANSARE.md. Verifică sursele la aproximativ 30 de secunde
 între procesări. Documentele mari pot dura minute; cadența nu garantează acces
 instantaneu. Starea documentelor este afișată în interfață.
+
+Fișierele încărcate sunt înregistrate imediat cu starea „În așteptare”, chiar dacă
+procesarea este oprită. Folderele adăugate și fișierele lor apar înaintea opțiunilor
+de conectare a altor surse. „Încărcat” nu înseamnă „indexat”: numai documentele
+procesate și actuale pot furniza dovezi în chat. Bannerul serviciilor se actualizează
+automat la 15 secunde, iar lista din chat la 30 de secunde.
+
+Pentru o instalare existentă în care procesarea a fost omisă:
+
+```bash
+docker compose up -d source-watch
+docker compose logs --tail=60 source-watch
+```
+
+Butonul „Elimină” din bibliotecă sau chat retrage imediat sursa din liste și din
+căutările noi. Workerul șterge apoi indexul și, pentru upload, numai copia deținută
+de aplicație în directorul UUID al sursei. Originalele locale și din Google Drive
+se păstrează. Conexiunea Drive este dezactivată prin eliminarea configurației de
+sincronizare; mirrorul local Drive se păstrează. Dacă workerul sau Qdrant este oprit,
+curățarea se reia la revenire, iar documentele rămân excluse. Încărcările noi într-o
+sursă eliminată sunt refuzate; eliminarea în cursul indexării nu reactivează sursa.
+
+Coșul de lângă fiecare fișier elimină **numai documentul ales**, din bibliotecă sau
+direct din chat. Folderul și celelalte documente rămân conectate. Documentul este
+exclus imediat din căutările noi, apoi workerul curăță vectorii și, doar pentru
+upload, copia lui locală. Un marker persistent împiedică reapariția documentului
+original la scanări locale sau sincronizări Drive. Pentru a-l adăuga din nou,
+încarcă folderul ca sursă nouă sau reconectează sursa după eliminarea ei completă.
 
 Formate: PDF, DOCX, XLSX, TXT, MD, CSV. Limitele inițiale configurabile în `.env`:
 - `SOURCE_MAX_FILE_MB=250`: MiB per fișier, pentru încărcare, monitorizare și Drive (1–1024).
@@ -81,7 +111,12 @@ cu acreditările clientului în mediul său.
 - `GET /sources/folders?path=`: subfoldere din rădăcina autorizată.
 - `POST /sources`: JSON `{name, kind: local|upload|drive, path}`, răspuns `{id}`.
 - `POST /sources/{id}/upload?path=folder/fisier.pdf`: corp binar fără multipart.
+- `DELETE /sources/{id}`: retrage sursa imediat și programează curățarea; răspuns
+  `{ok: true, status: removed}`. Repetarea cererii înainte de curățare este idempotentă.
+- `DELETE /sources/{id}/files/{doc_id}`: retrage un singur document identificat
+  prin `doc_id` din listă; aceeași protecție a mutațiilor și același răspuns. Nu
+  acceptă un document dintr-o altă sursă. Curățarea nereușită se reia automat.
 
-POST necesită headerul `X-Source-Action: 1`, same-origin. Nu este expus întregul
-disc. Interfața nu oferă încă ștergerea surselor. Includeți `data/source-state`,
+POST și DELETE necesită headerul `X-Source-Action: 1`, same-origin. Nu este expus întregul
+disc. Includeți `data/source-state`,
 `source-uploads`, `drive-config` și `drive-mirror` în procedura locală de backup.

@@ -46,8 +46,9 @@ class MemoryStore:
             if not row:
                 raise HTTPException(404, 'Conversație inexistentă în acest spațiu.')
             turns = conn.execute('SELECT query,response,request_id FROM (SELECT * FROM chat_turn WHERE conversation_id=%s ORDER BY id DESC LIMIT 100) t ORDER BY id', (cid,)).fetchall()
-            row['messages'] = [m for t in turns for m in ({'role': 'user', 'text': t['query']}, {'role': 'assistant', 'data': t['response']})]
+            row['messages'] = [m for t in turns for m in ({'role': 'user', 'text': t['query']}, {'role': 'assistant', 'data': {**t['response'], 'request_id': str(t['request_id'])}})]
             row['references'] = conn.execute('SELECT id,evidence,note,created_at FROM chat_reference WHERE conversation_id=%s ORDER BY id DESC LIMIT 100', (cid,)).fetchall()
+            row['corrections'] = conn.execute('SELECT id,request_id,query,note,created_at FROM chat_correction WHERE conversation_id=%s ORDER BY created_at DESC LIMIT 100', (cid,)).fetchall()
             return row
 
     def previous(self, owner, cid, request_id):
@@ -67,7 +68,7 @@ class MemoryStore:
                 return old['response']
             if row['version'] != version:
                 raise HTTPException(409, 'Conversația s-a modificat în alt tab. Reîncarcă istoricul.')
-            result = {**result, 'conversation_id': str(cid), 'version': version + 1}
+            result = {**result, 'conversation_id': str(cid), 'request_id': str(request_id), 'version': version + 1}
             conn.execute('INSERT INTO chat_turn(conversation_id,request_id,query,response) VALUES(%s,%s,%s,%s)', (cid, request_id, query, Jsonb(result)))
             conn.execute('UPDATE chat_conversation SET version=version+1,updated_at=now() WHERE id=%s', (cid,))
         return result
@@ -81,6 +82,28 @@ class MemoryStore:
         with self.connect() as conn:
             conn.execute('INSERT INTO chat_reference(conversation_id,evidence,note) VALUES(%s,%s,%s)', (cid, Jsonb(evidence), note))
         return {'ok': True}
+
+
+    def correct(self, owner, cid, request_id, evidence_ids, note):
+        with self.connect() as conn:
+            turn = conn.execute('SELECT t.query,t.response FROM chat_turn t JOIN chat_conversation c ON c.id=t.conversation_id WHERE c.id=%s AND c.owner_hash=%s AND t.request_id=%s', (cid, owner, request_id)).fetchone()
+            if not turn:
+                raise HTTPException(404, 'Răspuns inexistent în acest spațiu.')
+            available = {e['id']: e for e in turn['response'].get('evidence', [])}
+            if not set(evidence_ids) <= available.keys():
+                raise HTTPException(422, 'Selectează pasaje din răspunsul corectat.')
+            rejected = [available[i] for i in dict.fromkeys(evidence_ids)]
+            row = conn.execute('''INSERT INTO chat_correction(id,conversation_id,request_id,query,rejected_evidence,note)
+                VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(conversation_id,request_id)
+                DO UPDATE SET rejected_evidence=EXCLUDED.rejected_evidence,note=EXCLUDED.note,created_at=now()
+                RETURNING id''', (uuid4(), cid, request_id, turn['response'].get('resolved_query', turn['query']), Jsonb(rejected), note)).fetchone()
+        return {'ok': True, 'id': str(row['id'])}
+
+    def corrections(self, owner, project):
+        with self.connect() as conn:
+            return conn.execute('''SELECT r.id,r.query,r.rejected_evidence,r.note FROM chat_correction r
+                JOIN chat_conversation c ON c.id=r.conversation_id
+                WHERE c.owner_hash=%s AND c.project=%s ORDER BY r.created_at DESC LIMIT 100''', (owner, project)).fetchall()
 
 
 @lru_cache
@@ -116,6 +139,12 @@ class ReferenceIn(BaseModel):
     note: str = Field(default='', max_length=1000)
 
 
+class CorrectionIn(BaseModel):
+    request_id: UUID
+    evidence_ids: list[str] = Field(default_factory=list, max_length=20)
+    note: str = Field(min_length=1, max_length=1000, pattern=r'\S')
+
+
 @router.post('')
 def create(body: ConversationIn, request: Request, response: Response, store=Depends(get_store)):
     token = request.cookies.get(COOKIE)
@@ -144,3 +173,8 @@ def read(cid: UUID, request: Request, store=Depends(get_store)):
 @router.post('/{cid}/references')
 def remember(cid: UUID, body: ReferenceIn, request: Request, store=Depends(get_store)):
     return store.reference(owner(request), cid, body.evidence_id, body.note)
+
+
+@router.post('/{cid}/corrections')
+def correct(cid: UUID, body: CorrectionIn, request: Request, store=Depends(get_store)):
+    return store.correct(owner(request), cid, body.request_id, body.evidence_ids, body.note)

@@ -41,6 +41,8 @@ def connect():
       CREATE UNIQUE INDEX IF NOT EXISTS source_location ON sources(kind,path);
       CREATE TABLE IF NOT EXISTS files(source TEXT, path TEXT, digest TEXT, doc_id TEXT, status TEXT, updated REAL, error TEXT, PRIMARY KEY(source,path));
       CREATE TABLE IF NOT EXISTS worker(id INTEGER PRIMARY KEY, heartbeat REAL);
+      CREATE TABLE IF NOT EXISTS source_removals(source TEXT PRIMARY KEY, requested REAL);
+      CREATE TABLE IF NOT EXISTS file_removals(source TEXT, path TEXT, requested REAL, cleaned INTEGER DEFAULT 0, PRIMARY KEY(source,path));
     ''')
     return db
 
@@ -81,13 +83,76 @@ def listing():
     db = connect()
     try:
         rows = []
-        for source in db.execute('SELECT * FROM sources ORDER BY name'):
+        for source in db.execute('SELECT * FROM sources WHERE id NOT IN (SELECT source FROM source_removals) ORDER BY name,id'):
             item = dict(source)
-            item['counts'] = dict(db.execute('SELECT status,count(*) FROM files WHERE source=? GROUP BY status', (source['id'],)).fetchall())
-            item['files'] = [dict(f) for f in db.execute('SELECT path,doc_id,status,updated,error FROM files WHERE source=? ORDER BY updated DESC LIMIT 50', (source['id'],))]
+            visible = 'source=? AND NOT EXISTS (SELECT 1 FROM file_removals r WHERE r.source=files.source AND r.path=files.path)'
+            item['counts'] = dict(db.execute(f'SELECT status,count(*) FROM files WHERE {visible} GROUP BY status', (source['id'],)).fetchall())
+            item['files'] = [dict(f) for f in db.execute(f'SELECT path,doc_id,status,updated,error FROM files WHERE {visible} ORDER BY updated DESC LIMIT 50', (source['id'],))]
             rows.append(item)
         worker = db.execute('SELECT heartbeat FROM worker WHERE id=1').fetchone()
-        return {'sources': rows, 'worker_active': bool(worker and time.time() - worker[0] < 120), 'formats': sorted(EXTENSIONS), 'poll_seconds': 30, 'limits': {'file_bytes': MAX_BYTES, 'folder_bytes': MAX_FOLDER_BYTES, 'files': MAX_FILES}}
+        cleanup_pending = db.execute('SELECT count(*) FROM file_removals WHERE cleaned=0').fetchone()[0] + db.execute('SELECT count(*) FROM source_removals').fetchone()[0]
+        return {'sources': rows, 'cleanup_pending': cleanup_pending, 'worker_active': bool(worker and time.time() - worker[0] < 120), 'formats': sorted(EXTENSIONS), 'poll_seconds': 30, 'limits': {'file_bytes': MAX_BYTES, 'folder_bytes': MAX_FOLDER_BYTES, 'files': MAX_FILES}}
+    finally:
+        db.close()
+
+
+@router.delete('/{sid}')
+def remove_source(sid: UUID, request: Request):
+    """Withdraw immediately; the worker cleans the index and uploaded copies."""
+    mutation(request)
+    db = connect()
+    try:
+        source = db.execute('SELECT * FROM sources WHERE id=?', (str(sid),)).fetchone()
+        if not source:
+            raise HTTPException(404, 'Sursă inexistentă.')
+        db.execute('INSERT OR IGNORE INTO source_removals VALUES(?,?)', (str(sid), time.time()))
+        db.commit()
+        if source['kind'] == 'drive':
+            # Stop future syncs; never delete files in the remote Drive folder.
+            config = Path(os.getenv('DRIVE_CONFIG_ROOT', '/data/drive-config'))
+            (config / (str(sid) + '.json')).unlink(missing_ok=True)
+        return {'ok': True, 'status': 'removed'}
+    finally:
+        db.close()
+
+
+def removal_requested(db, sid):
+    return bool(db.execute('SELECT 1 FROM source_removals WHERE source=?', (sid,)).fetchone())
+
+
+def file_removal_requested(db, sid, path):
+    return bool(db.execute('SELECT 1 FROM file_removals WHERE source=? AND path=?', (sid, path)).fetchone())
+
+
+@router.post('/{sid}/retry')
+def retry_source(sid: UUID, request: Request):
+    mutation(request)
+    db = connect()
+    try:
+        if removal_requested(db, str(sid)) or not db.execute('SELECT 1 FROM sources WHERE id=?', (str(sid),)).fetchone():
+            raise HTTPException(404, 'Sursă inexistentă.')
+        result = db.execute("UPDATE files SET status='pending',updated=0,error=NULL WHERE source=? AND status='error' AND NOT EXISTS (SELECT 1 FROM file_removals r WHERE r.source=files.source AND r.path=files.path)", (str(sid),))
+        db.execute("UPDATE sources SET status='pending',error=NULL WHERE id=?", (str(sid),))
+        db.commit()
+        return {'ok': True, 'queued': result.rowcount}
+    finally:
+        db.close()
+
+
+@router.delete('/{sid}/files/{identifier}')
+def remove_file(sid: UUID, identifier: str, request: Request):
+    """Exclude one document immediately, preserving the source and all other files."""
+    mutation(request)
+    db = connect()
+    try:
+        source = db.execute('SELECT 1 FROM sources WHERE id=?', (str(sid),)).fetchone()
+        row = db.execute('SELECT path FROM files WHERE source=? AND doc_id=?', (str(sid), identifier)).fetchone()
+        if not source or removal_requested(db, str(sid)) or not row:
+            raise HTTPException(404, 'Document inexistent în acest folder.')
+        db.execute('INSERT OR IGNORE INTO file_removals(source,path,requested) VALUES(?,?,?)',
+                   (str(sid), row['path'], time.time()))
+        db.commit()
+        return {'ok': True, 'status': 'removed'}
     finally:
         db.close()
 
@@ -154,9 +219,11 @@ async def upload(sid: UUID, request: Request, path: str):
     mutation(request)
     db = connect()
     try:
-        source = db.execute("SELECT * FROM sources WHERE id=? AND kind='upload'", (str(sid),)).fetchone()
+        source = db.execute("SELECT * FROM sources WHERE id=? AND kind='upload' AND id NOT IN (SELECT source FROM source_removals)", (str(sid),)).fetchone()
         if not source:
             raise HTTPException(404, 'Folder de încărcare inexistent.')
+        if file_removal_requested(db, str(sid), path):
+            raise HTTPException(409, 'Document eliminat din această sursă. Pentru a-l adăuga din nou, încarcă folderul ca sursă nouă.')
     finally:
         db.close()
     try:
@@ -172,6 +239,7 @@ async def upload(sid: UUID, request: Request, path: str):
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name('.' + str(uuid4()) + '.part')
     total = 0
+    digest = hashlib.sha256()
     try:
         with temporary.open('wb') as out:
             async for chunk in request.stream():
@@ -179,9 +247,24 @@ async def upload(sid: UUID, request: Request, path: str):
                 if total > remaining:
                     raise HTTPException(413, f'Limită: {MAX_BYTES // 1024 ** 2} MB per fișier și {MAX_FOLDER_BYTES // 1024 ** 3} GB per folder încărcat.')
                 out.write(chunk)
+                digest.update(chunk)
         if not total:
             raise HTTPException(422, 'Fișier gol.')
-        temporary.replace(target)
+        db = connect()
+        try:
+            # Serialize publication with removal and register before the worker runs.
+            db.execute('BEGIN IMMEDIATE')
+            if removal_requested(db, str(sid)) or not db.execute('SELECT 1 FROM sources WHERE id=?', (str(sid),)).fetchone():
+                raise HTTPException(404, 'Folderul a fost eliminat din bibliotecă.')
+            if file_removal_requested(db, str(sid), path):
+                raise HTTPException(409, 'Documentul a fost eliminat din această sursă.')
+            temporary.replace(target)
+            db.execute('INSERT OR REPLACE INTO files VALUES(?,?,?,?,?,?,?)',
+                       (str(sid), path, digest.hexdigest(), doc_id(str(sid), path), 'pending', time.time(), None))
+            db.execute("UPDATE sources SET status='pending',error=NULL WHERE id=?", (str(sid),))
+            db.commit()
+        finally:
+            db.close()
     finally:
         temporary.unlink(missing_ok=True)
     return {'ok': True, 'status': 'pending'}
@@ -212,7 +295,7 @@ def current_document(identifier, revision):
         worker = db.execute('SELECT heartbeat FROM worker WHERE id=1').fetchone()
         if not worker or time.time() - worker[0] > 120:
             return False
-        row = db.execute('SELECT f.*,s.kind,s.path AS source_path FROM files f JOIN sources s ON s.id=f.source WHERE f.doc_id=? AND f.status=?', (identifier, 'indexed')).fetchone()
+        row = db.execute('SELECT f.*,s.kind,s.path AS source_path FROM files f JOIN sources s ON s.id=f.source WHERE f.doc_id=? AND f.status=? AND s.id NOT IN (SELECT source FROM source_removals) AND NOT EXISTS (SELECT 1 FROM file_removals r WHERE r.source=f.source AND r.path=f.path)', (identifier, 'indexed')).fetchone()
         if not row or row['digest'] != revision:
             return False
         base = safe_path(root(row['kind']), row['source_path'] if row['kind'] != 'drive' else row['source'])
