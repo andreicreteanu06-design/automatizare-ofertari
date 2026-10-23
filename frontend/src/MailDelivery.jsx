@@ -7,6 +7,27 @@ export function ProviderLogo({ provider }) {
   return provider === 'google' ? <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"><path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.9-1.75 2.98-4.33 2.98-7.36Z"/><path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.41l-3.24-2.51c-.9.6-2.04.96-3.38.96-2.6 0-4.8-1.76-5.59-4.12H3.07v2.59A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.41 13.92a6 6 0 0 1 0-3.84V7.49H3.07a10 10 0 0 0 0 9.02l3.34-2.59Z"/><path fill="#EA4335" d="M12 5.96c1.47 0 2.79.51 3.83 1.51l2.87-2.87A9.62 9.62 0 0 0 12 2a10 10 0 0 0-8.93 5.49l3.34 2.59A6 6 0 0 1 12 5.96Z"/></svg> : <svg aria-hidden="true" width="22" height="22" viewBox="0 0 22 22"><path fill="#f25022" d="M1 1h9v9H1z"/><path fill="#7fba00" d="M12 1h9v9h-9z"/><path fill="#00a4ef" d="M1 12h9v9H1z"/><path fill="#ffb900" d="M12 12h9v9h-9z"/></svg>;
 }
 
+function MailSetup({ provider, account }) {
+  const google = provider === 'google';
+  const setup = account?.setup;
+  return <details className="mail-setup"><summary>Configurează {google ? 'Google' : 'Microsoft'}</summary>
+    <p>Conectarea necesită înregistrarea aplicației la furnizor. După configurarea inițială, vei autoriza contul în pagina lui.</p>
+    {!!setup?.missing_settings?.length && <p>Setări lipsă: <strong>{setup.missing_settings.join(', ')}</strong>.</p>}
+    {!!setup?.invalid_settings?.length && <p>Setări de corectat: <strong>{setup.invalid_settings.join(', ')}</strong>.</p>}
+    <ol>{google ? <>
+      <li>În <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" rel="noreferrer">Google Cloud</a>, activează Gmail API și configurează consimțământul. Pentru o aplicație în test, adaugă adresa contului la utilizatorii de test.</li>
+      <li>Creează un client OAuth de tip „Web application” și înregistrează adresa de revenire de mai jos.</li>
+    </> : <>
+      <li>În <a href="https://entra.microsoft.com/" target="_blank" rel="noreferrer">Microsoft Entra</a>, înregistrează aplicația pentru tipul de cont folosit, cu platforma „Web” și un client secret.</li>
+      <li>Adaugă permisiunile delegate User.Read și Mail.Send și înregistrează adresa de revenire de mai jos. Organizația poate cere aprobarea administratorului.</li>
+    </>}
+      <li>Pe calculatorul care găzduiește aplicația, rulează <code>python3 scripts/configure_email.py --provider {provider}</code>, apoi repornește serviciile conform instrucțiunilor afișate.</li>
+    </ol>
+    {setup?.redirect_uri ? <p>Adresa de revenire exactă: <code className="mail-callback">{setup.redirect_uri}</code></p> : <p>Adresa de revenire va fi afișată de comanda de configurare, folosind adresa aplicației.</p>}
+    <p>Introdu Client ID și Client Secret numai în terminalul local. Ghidul complet este în EMAIL_CONNECT.md din proiect.</p>
+  </details>;
+}
+
 export function MailAccounts({ accounts, refresh, error, loading }) {
   const [busy, setBusy] = useState('');
   const [failure, setFailure] = useState('');
@@ -30,7 +51,7 @@ export function MailAccounts({ accounts, refresh, error, loading }) {
     <div className="mail-provider-grid">{['google', 'microsoft'].map(provider => {
       const account = accounts.find(a => a.provider === provider);
       const name = provider === 'google' ? 'Google / Gmail' : 'Microsoft / Outlook';
-      return <div className="mail-provider" key={provider}><div className="mail-provider-name"><ProviderLogo provider={provider}/><strong>{name}</strong></div><p>{account?.connected ? account.email : account?.configured ? 'Conectare securizată în pagina furnizorului.' : loading ? 'Se verifică disponibilitatea…' : 'Necesită configurarea OAuth de către administrator.'}</p>{account?.connected ? <Button secondary disabled={!!busy} onClick={() => disconnect(provider)}><Unplug size={15}/>Deconectează {provider === 'google' ? 'Google' : 'Microsoft'}</Button> : <Button secondary disabled={loading || !!busy || !account?.configured} onClick={() => connect(provider)}>Conectează cu {provider === 'google' ? 'Google' : 'Microsoft'}</Button>}</div>;
+      return <div className="mail-provider" key={provider}><div className="mail-provider-name"><ProviderLogo provider={provider}/><strong>{name}</strong></div><p>{account?.connected ? account.email : account?.configured ? 'Conectare securizată în pagina furnizorului.' : loading ? 'Se verifică disponibilitatea…' : error ? 'Disponibilitatea conectării nu a putut fi verificată.' : 'Configurarea inițială a conectării nu este finalizată.'}</p>{account?.connected ? <Button secondary disabled={!!busy} onClick={() => disconnect(provider)}><Unplug size={15}/>Deconectează {provider === 'google' ? 'Google' : 'Microsoft'}</Button> : <Button secondary disabled={loading || !!busy || !account?.configured} onClick={() => connect(provider)}>Conectează cu {provider === 'google' ? 'Google' : 'Microsoft'}</Button>}{!loading && !account?.configured && <MailSetup provider={provider} account={account}/>}</div>;
     })}</div><p className="note mt-4">Acces pentru trimitere. Citirea și triajul atașamentelor se configurează separat prin IMAP. După autorizare, revino în acest tab.</p><ErrorBox error={failure || error}/>{location.hash.includes('oauth=connected') && <p role="status">Cont conectat. Poți reveni în tabul în care pregăteai mesajul.</p>}{location.hash.includes('oauth=error') && <ErrorBox error="Conectarea nu a fost finalizată. Reia autorizarea contului."/>}</section>;
 }
 

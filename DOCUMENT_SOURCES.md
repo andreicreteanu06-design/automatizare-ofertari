@@ -38,6 +38,13 @@ sincronizare; mirrorul local Drive se păstrează. Dacă workerul sau Qdrant est
 curățarea se reia la revenire, iar documentele rămân excluse. Încărcările noi într-o
 sursă eliminată sunt refuzate; eliminarea în cursul indexării nu reactivează sursa.
 
+Coșul de lângă fiecare fișier elimină **numai documentul ales**, din bibliotecă sau
+direct din chat. Folderul și celelalte documente rămân conectate. Documentul este
+exclus imediat din căutările noi, apoi workerul curăță vectorii și, doar pentru
+upload, copia lui locală. Un marker persistent împiedică reapariția documentului
+original la scanări locale sau sincronizări Drive. Pentru a-l adăuga din nou,
+încarcă folderul ca sursă nouă sau reconectează sursa după eliminarea ei completă.
+
 Formate: PDF, DOCX, XLSX, TXT, MD, CSV. Limitele inițiale configurabile în `.env`:
 - `SOURCE_MAX_FILE_MB=250`: MiB per fișier, pentru încărcare, monitorizare și Drive (1–1024).
 - `SOURCE_MAX_FOLDER_GB=100`: GiB per folder încărcat prin browser (1–10000).
@@ -106,6 +113,9 @@ cu acreditările clientului în mediul său.
 - `POST /sources/{id}/upload?path=folder/fisier.pdf`: corp binar fără multipart.
 - `DELETE /sources/{id}`: retrage sursa imediat și programează curățarea; răspuns
   `{ok: true, status: removed}`. Repetarea cererii înainte de curățare este idempotentă.
+- `DELETE /sources/{id}/files/{doc_id}`: retrage un singur document identificat
+  prin `doc_id` din listă; aceeași protecție a mutațiilor și același răspuns. Nu
+  acceptă un document dintr-o altă sursă. Curățarea nereușită se reia automat.
 
 POST și DELETE necesită headerul `X-Source-Action: 1`, same-origin. Nu este expus întregul
 disc. Includeți `data/source-state`,

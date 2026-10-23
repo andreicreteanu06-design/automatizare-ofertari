@@ -83,12 +83,42 @@ class SendIn(AccountIn):
         return value
 
 
+def valid_public_url(public):
+    try:
+        p = urlsplit(public)
+        return bool(p.hostname and p.port != 0 and not any(c.isspace() for c in public)
+                    and (p.scheme == 'https' or (p.scheme == 'http' and p.hostname in ('localhost', '127.0.0.1')))
+                    and not (p.path or p.query or p.fragment or p.username or p.password))
+    except ValueError:
+        return False
+
+
+def setup_status(provider):
+    """Return setting names and a public callback URL, never credentials or tokens."""
+    prefix = 'GOOGLE' if provider == 'google' else 'MICROSOFT'
+    missing = [name for name in (prefix + '_CLIENT_ID', prefix + '_CLIENT_SECRET', 'MAIL_TOKEN_KEY', 'MAIL_PUBLIC_URL')
+               if not os.getenv(name, '').strip()]
+    invalid = []
+    public = os.getenv('MAIL_PUBLIC_URL', '').strip().rstrip('/')
+    if public and not valid_public_url(public):
+        invalid.append('MAIL_PUBLIC_URL')
+    key = os.getenv('MAIL_TOKEN_KEY', '').strip()
+    if key:
+        try:
+            Fernet(key.encode())
+        except ValueError:
+            invalid.append('MAIL_TOKEN_KEY')
+    if provider == 'microsoft' and not re.fullmatch(r'[a-zA-Z0-9.-]+', os.getenv('MICROSOFT_TENANT', 'common')):
+        invalid.append('MICROSOFT_TENANT')
+    return {'missing_settings': missing, 'invalid_settings': invalid,
+            'redirect_uri': f'{public}/api/emails/accounts/{provider}/callback' if valid_public_url(public) else None}
+
+
 def config(provider):
     prefix = 'GOOGLE' if provider == 'google' else 'MICROSOFT'
-    client_id, secret = (os.getenv(prefix + suffix, '') for suffix in ('_CLIENT_ID', '_CLIENT_SECRET'))
-    public = os.getenv('MAIL_PUBLIC_URL', '').rstrip('/')
-    p = urlsplit(public)
-    if not client_id or not secret or not (p.scheme == 'https' or (p.scheme == 'http' and p.hostname in ('localhost', '127.0.0.1'))) or p.path or p.query or p.fragment or p.username:
+    client_id, secret = (os.getenv(prefix + suffix, '').strip() for suffix in ('_CLIENT_ID', '_CLIENT_SECRET'))
+    public = os.getenv('MAIL_PUBLIC_URL', '').strip().rstrip('/')
+    if not client_id or not secret or not valid_public_url(public):
         raise HTTPException(503, 'Administratorul trebuie să configureze OAuth și MAIL_PUBLIC_URL în .env.')
     if provider == 'google':
         auth, token = 'https://accounts.google.com/o/oauth2/v2/auth', 'https://oauth2.googleapis.com/token'
@@ -172,15 +202,18 @@ def router(guard):
 
     @routes.post('/status')
     def status(body: AccountIn):
+        setup = setup_status(body.provider)
+        if setup['missing_settings'] or setup['invalid_settings']:
+            return {'provider': body.provider, 'configured': False, 'connected': False, 'setup': setup}
         try:
             config(body.provider)
             store = Store()
         except HTTPException:
-            return {'provider': body.provider, 'configured': False, 'connected': False}
+            return {'provider': body.provider, 'configured': False, 'connected': False, 'setup': setup}
         try:
             row = store.db.execute('SELECT data FROM accounts WHERE owner=? AND provider=?', (body.owner, body.provider)).fetchone()
             account = store.read(row['data']) if row else None
-            return {'provider': body.provider, 'configured': True, 'connected': bool(account), 'email': account['email'] if account else None}
+            return {'provider': body.provider, 'configured': True, 'connected': bool(account), 'email': account['email'] if account else None, 'setup': setup}
         finally:
             store.db.close()
 

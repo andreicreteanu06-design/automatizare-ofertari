@@ -143,3 +143,21 @@ test('Microsoft connect opens authorization while retaining the generated draft'
   await expect(page.getByLabel('Subiect', { exact: true })).toHaveValue('Cerere P1');
   await popup.close();
 });
+
+test('unconfigured account shows exact missing settings and setup without exposing secrets', async ({ page }) => {
+  await page.route('**/api/emails/accounts', r => r.fulfill({ json: [{ provider: 'google', configured: false, setup: { missing_settings: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], invalid_settings: [], redirect_uri: 'http://127.0.0.1:8080/api/emails/accounts/google/callback' } }, { provider: 'microsoft', configured: false }] }));
+  await page.goto('/#email');
+  await page.getByText('Configurează Google', { exact: true }).click();
+  await expect(page.locator('.mail-setup').first()).toContainText('GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET');
+  await expect(page.locator('.mail-setup').first()).toContainText('http://127.0.0.1:8080/api/emails/accounts/google/callback');
+  await expect(page.locator('.mail-setup').first()).toContainText('python3 scripts/configure_email.py --provider google');
+  await expect(page.getByRole('button', { name: 'Conectează cu Google', exact: true })).toBeDisabled();
+  await page.screenshot({ path: test.info().outputPath('oauth-setup.png'), fullPage: true });
+});
+
+test('unreachable mail service is reported separately from unconfigured OAuth', async ({ page }) => {
+  await page.route('**/api/emails/accounts', r => r.fulfill({ status: 503, json: { detail: 'Serviciul e-mail nu răspunde.' } }));
+  await page.goto('/#email');
+  await expect(page.locator('.mail-accounts')).toContainText('Disponibilitatea conectării nu a putut fi verificată.');
+  await expect(page.locator('.mail-accounts')).toContainText('Serviciul e-mail nu răspunde.');
+});

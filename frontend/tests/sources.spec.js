@@ -110,3 +110,25 @@ test('failed removal retains the folder and shows the error', async ({ page }) =
   await expect(page.getByRole('alert')).toContainText('Operația nu este disponibilă momentan.');
   await expect(page.getByRole('heading', { name: 'Technical', exact: true })).toBeVisible();
 });
+
+test('individual document removal keeps the source and its other document', async ({ page }) => {
+  let removed = false, calls = 0;
+  const files = [{ path: 'certificat.pdf', doc_id: 'SRC-first', status: 'indexed' }, { path: 'preturi.pdf', doc_id: 'SRC-second', status: 'indexed' }];
+  await page.route('**/api/sources', r => r.fulfill({ json: { worker_active: true, sources: [{ id: 'source-1', name: 'Test ofertari', kind: 'upload', status: 'ready', counts: { indexed: removed ? 1 : 2 }, files: removed ? [files[1]] : files }] } }));
+  await page.route('**/api/sources/source-1/files/SRC-first', r => {
+    expect(r.request().method()).toBe('DELETE');
+    expect(r.request().headers()['x-source-action']).toBe('1');
+    calls++; removed = true;
+    return r.fulfill({ json: { ok: true, status: 'removed' } });
+  });
+  await page.goto('/#sources');
+  page.once('dialog', d => d.dismiss());
+  await page.getByRole('button', { name: 'Elimină documentul certificat.pdf', exact: true }).click();
+  expect(calls).toBe(0);
+  page.once('dialog', d => { expect(d.message()).toContain('celelalte documente rămân păstrate'); return d.accept(); });
+  await page.getByRole('button', { name: 'Elimină documentul certificat.pdf', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Elimină documentul certificat.pdf', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Test ofertari', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Elimină documentul preturi.pdf', exact: true })).toBeVisible();
+  expect(calls).toBe(1);
+});

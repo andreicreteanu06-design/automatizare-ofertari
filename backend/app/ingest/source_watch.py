@@ -8,7 +8,7 @@ import threading
 import time
 from pathlib import Path
 
-from app.sources import EXTENSIONS, MAX_BYTES, MAX_FILES, connect, doc_id, root, safe_path, content_digest, removal_requested
+from app.sources import EXTENSIONS, MAX_BYTES, MAX_FILES, connect, doc_id, root, safe_path, content_digest, removal_requested, file_removal_requested
 
 
 def remove_document(identifier):
@@ -68,9 +68,26 @@ def purge_source(db, source, remove=remove_document):
         if folder.exists():
             shutil.rmtree(folder)
     db.execute('DELETE FROM files WHERE source=?', (sid,))
+    db.execute('DELETE FROM file_removals WHERE source=?', (sid,))
     db.execute('DELETE FROM sources WHERE id=?', (sid,))
     db.execute('DELETE FROM source_removals WHERE source=?', (sid,))
     db.commit()
+
+
+def purge_removed_files(db, source, remove=remove_document):
+    sid = source['id']
+    for row in db.execute('SELECT path FROM file_removals WHERE source=? AND cleaned=0', (sid,)).fetchall():
+        remove(doc_id(sid, row['path']))
+        if source['kind'] == 'upload':
+            from uuid import UUID
+            if str(UUID(sid)) != source['path']:
+                raise ValueError('Director de încărcare invalid.')
+            folder = safe_path(root('upload'), sid)
+            safe_path(folder, row['path']).unlink(missing_ok=True)
+        db.execute("UPDATE files SET status='removed',error=NULL,updated=? WHERE source=? AND path=?", (time.time(), sid, row['path']))
+        # Keep the exclusion so a monitored original or Drive sync cannot re-add it.
+        db.execute('UPDATE file_removals SET cleaned=1 WHERE source=? AND path=?', (sid, row['path']))
+        db.commit()
 
 
 def scan_source(db, source, index=index_document, remove=remove_document, now=None):
@@ -79,6 +96,7 @@ def scan_source(db, source, index=index_document, remove=remove_document, now=No
     if removal_requested(db, sid):
         purge_source(db, source, remove)
         return
+    purge_removed_files(db, source, remove)
     folder = safe_path(root(source['kind']), source['path'] if source['kind'] != 'drive' else sid)
     if not folder.is_dir():
         raise ValueError('Folderul nu este disponibil. Verifică montarea sau sincronizarea Drive.')
@@ -94,6 +112,9 @@ def scan_source(db, source, index=index_document, remove=remove_document, now=No
         if removal_requested(db, sid):
             purge_source(db, source, remove)
             return
+        if file_removal_requested(db, sid, rel):
+            purge_removed_files(db, source, remove)
+            continue
         old = previous.get(rel)
         identifier = doc_id(sid, rel)
         if stat.st_size > MAX_BYTES:
@@ -123,6 +144,9 @@ def scan_source(db, source, index=index_document, remove=remove_document, now=No
             if removal_requested(db, sid):
                 purge_source(db, source, remove)
                 return
+            if file_removal_requested(db, sid, rel):
+                purge_removed_files(db, source, remove)
+                continue
             if content_digest(path) != digest:
                 raise ValueError('Fișier modificat în timpul procesării; va fi reluat.')
             db.execute("UPDATE files SET status='indexed',error=NULL,updated=? WHERE source=? AND path=?", (time.time(), sid, rel))
@@ -130,6 +154,9 @@ def scan_source(db, source, index=index_document, remove=remove_document, now=No
             if removal_requested(db, sid):
                 purge_source(db, source, remove)
                 return
+            if file_removal_requested(db, sid, rel):
+                purge_removed_files(db, source, remove)
+                continue
             remove(identifier)
             errors += 1
             db.execute("UPDATE files SET status='error',error=?,updated=? WHERE source=? AND path=?",
@@ -138,6 +165,7 @@ def scan_source(db, source, index=index_document, remove=remove_document, now=No
     if removal_requested(db, sid):
         purge_source(db, source, remove)
         return
+    purge_removed_files(db, source, remove)
     for rel, old in previous.items():
         if rel not in files and old['status'] != 'removed':
             remove(old['doc_id'])

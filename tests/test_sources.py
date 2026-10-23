@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import sources
-from app.ingest.source_watch import scan_source, purge_source
+from app.ingest.source_watch import scan_source, purge_source, purge_removed_files
 from drive_sync.sync import sync
 from research_gateway.egress_guard import EgressGuard
 
@@ -54,6 +54,90 @@ def test_uploaded_files_are_visible_before_worker_starts(env):
     assert source['files'][0]['path'] == 'Test ofertari/certificat.pdf'
     assert source['files'][0]['doc_id'] == sources.doc_id(sid, 'Test ofertari/certificat.pdf')
     assert not sources.current_document(source['files'][0]['doc_id'], 'unknown')
+
+
+@pytest.mark.parametrize('kind', ['upload', 'local', 'drive'])
+def test_remove_one_document_preserves_folder_sibling_and_originals(env, kind):
+    client, tmp = env
+    source_path = {'upload': '', 'local': 'Technical', 'drive': 'folder12345678'}[kind]
+    sid = client.post('/sources', json={'kind': kind, 'name': 'Test', 'path': source_path}).json()['id']
+    folder = tmp / {'upload': 'uploads', 'local': 'local', 'drive': 'drive'}[kind] / (source_path if kind == 'local' else sid)
+    folder.mkdir(exist_ok=True)
+    if kind == 'drive':
+        (folder / '.sync.json').write_text(json.dumps({'status': 'ready', 'checked': time.time()}))
+    for name in ('remove.txt', 'keep.txt'):
+        (folder / name).write_text('PART123 5 kg')
+        os.utime(folder / name, (time.time() - 30,) * 2)
+    db = sources.connect()
+    db.execute('INSERT INTO worker VALUES(1,?)', (time.time(),)); db.commit()
+    source = db.execute('SELECT * FROM sources WHERE id=?', (sid,)).fetchone()
+    indexed, removed = [], []
+    scan_source(db, source, lambda p, i, d: indexed.append((i, d)), removed.append)
+    identifier = sources.doc_id(sid, 'remove.txt')
+    revision = sources.content_digest(folder / 'remove.txt')
+    assert sources.current_document(identifier, revision)
+    endpoint = f'/sources/{sid}/files/{identifier}'
+    assert client.delete(endpoint, headers={'X-Source-Action': ''}).status_code == 403
+    assert client.delete(endpoint, headers={'Sec-Fetch-Site': 'cross-site'}).status_code == 403
+    assert client.delete(endpoint).status_code == 200
+    assert client.delete(endpoint).status_code == 200
+    assert not sources.current_document(identifier, revision)
+    listed, = client.get('/sources').json()['sources']
+    assert listed['id'] == sid and listed['counts'] == {'indexed': 1}
+    assert [f['path'] for f in listed['files']] == ['keep.txt']
+    if kind == 'upload':
+        assert client.post(f'/sources/{sid}/upload', params={'path': 'remove.txt'}, content=b'new').status_code == 409
+    scan_source(db, source, lambda *args: pytest.fail('Excluded file must not be reindexed'), removed.append)
+    assert identifier in removed
+    assert (folder / 'keep.txt').read_text() == 'PART123 5 kg'
+    assert (folder / 'remove.txt').exists() is (kind != 'upload')
+    assert sources.file_removal_requested(db, sid, 'remove.txt')
+    assert len(client.get('/sources').json()['sources'][0]['files']) == 1
+    db.close()
+
+
+def test_file_removal_is_scoped_to_source_and_cleanup_retries(env):
+    client, tmp = env
+    sid, other = [client.post('/sources', json={'kind': 'upload', 'name': 'Test'}).json()['id'] for _ in range(2)]
+    client.post(f'/sources/{sid}/upload', params={'path': 'file.txt'}, content=b'PART123')
+    identifier = sources.doc_id(sid, 'file.txt')
+    assert client.delete(f'/sources/{other}/files/{identifier}').status_code == 404
+    assert client.delete(f'/sources/{sid}/files/unknown').status_code == 404
+    client.delete(f'/sources/{sid}/files/{identifier}')
+    db = sources.connect()
+    source = db.execute('SELECT * FROM sources WHERE id=?', (sid,)).fetchone()
+    def fail(_):
+        raise RuntimeError('offline')
+    with pytest.raises(RuntimeError):
+        purge_removed_files(db, source, fail)
+    assert (tmp / 'uploads' / sid / 'file.txt').exists()
+    assert db.execute('SELECT cleaned FROM file_removals').fetchone()[0] == 0
+    purge_removed_files(db, source, lambda _: None)
+    assert not (tmp / 'uploads' / sid / 'file.txt').exists()
+    assert len(client.get('/sources').json()['sources']) == 2
+    assert db.execute('SELECT cleaned FROM file_removals').fetchone()[0] == 1
+    db.close()
+
+
+@pytest.mark.parametrize('fails', [False, True])
+def test_remove_individual_document_during_indexing(env, fails):
+    client, tmp = env
+    sid = client.post('/sources', json={'kind': 'upload', 'name': 'Test'}).json()['id']
+    client.post(f'/sources/{sid}/upload', params={'path': 'file.txt'}, content=b'PART123')
+    path = tmp / 'uploads' / sid / 'file.txt'
+    os.utime(path, (time.time() - 30,) * 2)
+    db = sources.connect()
+    source = db.execute('SELECT * FROM sources WHERE id=?', (sid,)).fetchone()
+    removed = []
+    def index(p, identifier, digest):
+        assert client.delete(f'/sources/{sid}/files/{identifier}').status_code == 200
+        if fails:
+            raise RuntimeError('index interrupted')
+    scan_source(db, source, index, removed.append)
+    assert sources.doc_id(sid, 'file.txt') in removed
+    assert not path.exists()
+    assert client.get('/sources').json()['sources'][0]['files'] == []
+    db.close()
 
 
 def test_remove_uploaded_source_withdraws_before_cleanup_and_preserves_other_files(env):

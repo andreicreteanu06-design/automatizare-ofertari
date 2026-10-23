@@ -28,3 +28,6 @@
 .shell .notebook-layout .citation { cursor: pointer; }
 @media (min-width: 1650px) { .notebook-layout { grid-template-columns: 250px minmax(0, 1fr) 270px; } .notebook-evidence { grid-column: auto; } }
 @media (max-width: 1050px) { .notebook-layout { grid-template-columns: minmax(0,1fr); } .notebook-sources { position: static; max-height: 300px; overflow: auto; } .notebook-evidence { grid-column: auto; } .shell .notebook-layout .chat-stage { padding-inline: 16px; } }
+
+.notebook-file-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.notebook-file .icon-button { flex-shrink: 0; padding: 6px; }

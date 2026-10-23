@@ -60,7 +60,10 @@ async def accounts(request: Request, response: Response):
     from app.auth import account_owner
     identity = account_owner(request) or hashlib.sha256(token.encode()).hexdigest()
     if len(os.getenv('MAIL_SERVICE_KEY', '')) < 32:
-        return [{'provider': p, 'configured': False, 'connected': False} for p in ('google', 'microsoft')]
+        return [{'provider': p, 'configured': False, 'connected': False,
+                 'setup': {'missing_settings': ['MAIL_SERVICE_KEY'] if not os.getenv('MAIL_SERVICE_KEY') else [],
+                           'invalid_settings': ['MAIL_SERVICE_KEY'] if os.getenv('MAIL_SERVICE_KEY') else [],
+                           'redirect_uri': None}} for p in ('google', 'microsoft')]
     return [await gateway('status', {'owner': identity, 'provider': p}) for p in ('google', 'microsoft')]
 
 

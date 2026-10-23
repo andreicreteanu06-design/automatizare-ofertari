@@ -68,3 +68,21 @@ test('service banner recovers automatically after the document worker starts', a
   await expect(page.locator('.service-status summary')).toHaveText('Servicii disponibile');
   await expect(page.locator('.notebook-sources .warning')).toHaveCount(0);
 });
+
+test('document can be removed directly in chat and other files remain', async ({ page }) => {
+  let removed = false;
+  const files = [{ path: 'certificat.pdf', doc_id: 'SRC-first', status: 'indexed' }, { path: 'preturi.pdf', doc_id: 'SRC-second', status: 'indexed' }];
+  await page.route('**/api/conversations', r => r.fulfill({ json: [] }));
+  await page.route('**/api/emails/accounts', r => r.fulfill({ json: [] }));
+  await page.route('**/api/sources', r => r.fulfill({ json: { worker_active: true, sources: [{ id: 'source-1', name: 'Test ofertari', kind: 'upload', status: 'ready', counts: { indexed: removed ? 1 : 2 }, files: removed ? [files[1]] : files }] } }));
+  await page.route('**/api/sources/source-1/files/SRC-first', r => { expect(r.request().method()).toBe('DELETE'); removed = true; return r.fulfill({ json: { ok: true } }); });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#chat');
+  page.once('dialog', d => d.accept());
+  await page.getByRole('button', { name: 'Elimină documentul certificat.pdf', exact: true }).click();
+  await expect(page.locator('.notebook-sources')).not.toContainText('certificat.pdf');
+  await expect(page.locator('.notebook-sources')).toContainText('preturi.pdf');
+  await expect(page.locator('.notebook-sources')).toContainText('Test ofertari');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: test.info().outputPath('individual-remove-mobile.png'), fullPage: true });
+});
