@@ -51,7 +51,7 @@ def _doc_filter(doc_id):
 def index_chunks(client, embedder, chunks, meta):
     """(Re)indexează un document: șterge versiunea veche, apoi upsert. Idempotent."""
     ensure_collection(client, embedder.dim)
-    client.delete(COLLECTION, points_selector=models.FilterSelector(filter=_doc_filter(meta.doc_id)))
+    client.delete(COLLECTION, points_selector=models.FilterSelector(filter=_doc_filter(meta.doc_id)), wait=True)
     if not chunks:
         return
     vectors = embedder.embed(c.text for c in chunks)

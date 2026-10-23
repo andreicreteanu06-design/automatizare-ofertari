@@ -1,4 +1,5 @@
 import NotebookSources from './NotebookSources';
+import ChatCorrection from './ChatCorrection';
 import './notebook.css';
 import { Hero1 } from './components/ui/hero-1';
 import { useEffect, useRef, useState } from 'react';
@@ -8,7 +9,7 @@ import './chat.css';
 import { BranchingReasoningChatInput } from './components/ui/branching-reasoning-chat-input';
 import { Button, Check, ErrorBox, Field, Table } from './ui';
 
-function Answer({ data, onRemember, onInspect }) {
+function Answer({ data, onRemember, onInspect, onCorrect }) {
   const citations = data.citations || [];
   const parts = data.answer.split(/(\[https?:\/\/[^\]\n]+\]|\[[^\]\n]+:\d+\])/g);
   return <>
@@ -17,6 +18,8 @@ function Answer({ data, onRemember, onInspect }) {
       if (c?.url && /^https?:\/\//.test(c.url)) return <a className="citation" href={c.url} target="_blank" rel="noopener noreferrer" key={i}>{new URL(c.url).hostname} ↗</a>;
       return c ? <button type="button" onClick={() => onInspect?.({ ...c, response: data })} className="citation" key={i} title={`${c.supplier || 'Sursă internă'} · paginile ${c.page}–${c.page_end || c.page}`}><BookOpen size={12} />{c.doc_id} · p. {c.page}</button> : <span key={i}>{part}</span>;
     })}</div>
+    {onCorrect && data.request_id && <Button secondary onClick={() => onCorrect(data)}>Corectează răspunsul</Button>}
+    {!!data.corrections_applied?.length && <p className="correction-memory">{data.corrections_applied.length === 1 ? 'A fost consultată o corecție salvată pentru acest proiect.' : `Au fost consultate ${data.corrections_applied.length} corecții salvate pentru acest proiect.`}</p>}
     {data.verification_status && <p className={data.verification_status === 'verified_excerpts' ? 'success mt-3' : 'warning mt-3'}>
       {data.verification_status === 'verified_excerpts' ? 'Pasaje copiate din surse. Verifică relevanța, revizia și corectitudinea extragerii.' : data.verification_status === 'conflict' ? 'Surse contradictorii — este necesară verificarea unui specialist.' : 'Dovezi insuficiente după căutările efectuate.'}
       {' '}{data.attempts?.length || 0} încercări de căutare / verificare.
@@ -48,6 +51,8 @@ export default function Chat({ active = true }) {
   const [references, setReferences] = useState([]);
   const [selected, setSelected] = useState(null);
   const [note, setNote] = useState('');
+  const [correction, setCorrection] = useState(null);
+  const [correctionNotice, setCorrectionNotice] = useState('');
   const [query, setQuery] = useState('');
   const [k, setK] = useState('5');
   const [liveWeb, setLiveWeb] = useState(false);
@@ -59,6 +64,7 @@ export default function Chat({ active = true }) {
   const stage = useRef(null);
   function suggest(text) { setQuery(text); stage.current?.querySelector('textarea')?.focus(); }
   const applyConversation = data => {
+    setCorrection(null); setCorrectionNotice('');
     setInspected(null); setConversation(data); setMessages(data.messages || []); setReferences(data.references || []);
     setProject(data.project); setSelected(null); setNote('');
   };
@@ -87,6 +93,7 @@ export default function Chat({ active = true }) {
     finally { setBusy(false); }
   }
   function reset() {
+    setCorrection(null); setCorrectionNotice('');
     setInspected(null); setConversation(null); setMessages([]); setReferences([]); setSelected(null); setError(''); setQuery(''); pending.current = null;
   }
   async function submit(e) {
@@ -131,6 +138,7 @@ export default function Chat({ active = true }) {
       <Hero1 />
       <p className="notebook-mode">{liveWeb ? 'Bibliotecă internă + internet · sursele web apar separat în răspuns.' : 'Bibliotecă internă · internetul este oprit.'}</p>
       <ErrorBox error={error} />
+      {correctionNotice && <p role="status" className="success">{correctionNotice}</p>}
       <BranchingReasoningChatInput
         status={busy ? 'answering' : messages.length ? 'done' : 'idle'}
         value={query} onValueChange={setQuery} onSubmit={() => submit()}
@@ -140,11 +148,12 @@ export default function Chat({ active = true }) {
           note: ({ verified_excerpts: 'Pasaje selectate din surse.', no_matching_evidence: 'Nu au fost găsite dovezi potrivite.', invalid_selection: 'Selecția a necesitat reverificare.', conflicting_sources: 'Au fost găsite valori contradictorii.', insufficient_evidence: 'Dovezile nu au fost suficiente.', generation_timeout: 'Timpul de verificare a expirat.' })[a.outcome] || 'Verificare încheiată.',
           chosen: a.outcome === 'verified_excerpts',
         }))}
-        transcript={messages.length ? <div className="messages" role="log" aria-label="Mesaje chat" aria-live="polite">{messages.map((m, i) => <article key={i} className={`message ${m.role}`}><div className="message-author">{m.role === 'user' ? 'TU' : 'ASISTENT TEHNIC'}</div>{m.role === 'user' ? <p className="whitespace-pre-wrap">{m.text}</p> : <Answer data={m.data} onInspect={inspect} onRemember={conversation && !busy ? e => { setSelected(e); setNote(''); } : null} />}</article>)}<div ref={end} /></div> : undefined}
+        transcript={messages.length ? <div className="messages" role="log" aria-label="Mesaje chat" aria-live="polite">{messages.map((m, i) => <article key={i} className={`message ${m.role}`}><div className="message-author">{m.role === 'user' ? 'TU' : 'ASISTENT TEHNIC'}</div>{m.role === 'user' ? <p className="whitespace-pre-wrap">{m.text}</p> : <Answer data={m.data} onCorrect={conversation && !busy ? setCorrection : null} onInspect={inspect} onRemember={conversation && !busy ? e => { setSelected(e); setNote(''); } : null} />}</article>)}<div ref={end} /></div> : undefined}
         footer={<div className="live-web-option"><Check label="Cautare Live" value={liveWeb} onChange={setLiveWeb} /><p>Doar întrebarea curentă este trimisă spre web, după Egress Guard. {query.length}/1000</p></div>}
       />
       {!messages.length && <div className="chat-starters" aria-label="Idei de întrebări"><span>Începe cu</span><button type="button" disabled={busy || loading} onClick={() => suggest('Care sunt specificațiile tehnice pentru ')}>Date tehnice <ArrowUpRight size={16} aria-hidden="true"/></button><button type="button" disabled={busy || loading} onClick={() => suggest('Ce prețuri apar în facturi pentru ')}>Prețuri din facturi <ArrowUpRight size={16} aria-hidden="true"/></button></div>}
     </section>
+    {correction && <ChatCorrection key={correction.request_id} conversation={conversation} response={correction} onCancel={() => setCorrection(null)} onSaved={() => { setCorrection(null); setCorrectionNotice("Corecție salvată. Pune din nou întrebarea pentru a reverifica sursele."); }}/>}
     {selected && <form className="card" onSubmit={remember}><h2>Notă de revizuire</h2><p>{selected.quote}</p><label className="field mt-3"><span>Observație / corecție propusă (nu devine automat fapt verificat)</span><textarea maxLength={1000} value={note} onChange={e => setNote(e.target.value)} rows={3} /></label><Button type="submit" disabled={busy}>Salvează referința</Button></form>}
     {!!references.length && <section className="card"><h2>Referințe păstrate pentru acest proiect / conversație</h2>{references.map(r => <div className="line-card mt-3" key={r.id}><strong>{r.evidence.doc_id} · p. {r.evidence.page}</strong><p>{r.evidence.quote}</p><p className="whitespace-pre-wrap">{r.note}</p><small>Referință istorică; poate necesita reverificare după actualizarea documentului.</small></div>)}</section>}
   </div><aside className="notebook-evidence" ref={evidencePane} aria-label="Dovezi din răspuns"><h2>Surse și pasaje</h2><p>{inspected ? `Document selectat: ${inspected.doc_id}` : 'După fiecare răspuns, verifică aici pasajele folosite. Apasă o citare pentru a vedea sursa.'}</p>{inspected && <Button secondary onClick={() => setInspected(null)}>Ultimul răspuns</Button>}{(inspectedData?.evidence || []).filter(e => !inspected || e.doc_id === inspected.doc_id).map(e => <details key={e.id} open><summary>{e.doc_id} · p. {e.page}</summary><blockquote>{e.quote}</blockquote></details>)}{inspectedData?.citations?.filter(c => !inspected || c.doc_id === inspected.doc_id).map((c, i) => <p key={i}>{c.url && /^https?:\/\//.test(c.url) ? <a href={c.url} target="_blank" rel="noopener noreferrer">{c.url}</a> : `${c.doc_id} · p. ${c.page}`}</p>)}{!inspectedData?.evidence?.length && <p>Niciun pasaj de verificat încă. Numai documentele procesate pot furniza dovezi.</p>}</aside></div>;

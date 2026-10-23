@@ -10,6 +10,38 @@ from pathlib import Path
 
 from app.sources import EXTENSIONS, MAX_BYTES, MAX_FILES, connect, doc_id, root, safe_path, content_digest, removal_requested, file_removal_requested
 
+INDEX_ERRORS = {
+    'missing_model': 'Lipsesc modele locale Docling/BGE sau cache-ul nu este complet. Rulează pregătirea modelelor conform INDEXING.md.',
+    'missing_dependency': 'Lipsește o bibliotecă necesară conversiei. Reconstruiește backend și source-watch conform INDEXING.md.',
+    'ocr_runtime': 'OCR-ul local nu poate porni. Reconstruiește imaginea cu Tesseract și limbile română/engleză.',
+    'memory': 'Procesarea a fost oprită din lipsă de memorie sau prin semnal. Verifică memoria Docker și OOMKilled.',
+    'timeout': 'Documentul a depășit timpul de procesare de 30 de minute. Încearcă un document mai mic.',
+    'empty_document': 'Nu s-a extras text utilizabil. Verifică lizibilitatea sau protecția documentului.',
+    'changed_document': 'Fișier modificat în timpul procesării. Indexarea va fi reluată.',
+    'conversion': 'Conversia sau indexarea nu a reușit. Rulează diagnosticul din INDEXING.md pentru a identifica etapa.',
+}
+
+
+class IndexFailure(RuntimeError):
+    def __init__(self, code):
+        self.code = code if code in INDEX_ERRORS else 'conversion'
+        super().__init__(INDEX_ERRORS[self.code])
+
+
+def failure_code(error):
+    text = str(error).lower()
+    if isinstance(error, IndexFailure):
+        return error.code
+    if isinstance(error, (ImportError, ModuleNotFoundError)):
+        return 'missing_dependency'
+    if any(s in text for s in ('tesseract', 'libgl.so', 'libglib', 'libgomp')):
+        return 'ocr_runtime'
+    if isinstance(error, MemoryError) or 'out of memory' in text:
+        return 'memory'
+    if any(s in text for s in ('offline', 'localentrynotfound', 'artifacts', 'model.safetensors', 'no cached', 'couldn\'t connect to')):
+        return 'missing_model'
+    return 'conversion'
+
 
 def remove_document(identifier):
     from app.rag.index import COLLECTION, _doc_filter, qdrant_client
@@ -24,10 +56,19 @@ def remove_document(identifier):
 
 def index_document(path, identifier, digest):
     # One subprocess at a time releases Docling/BGE memory after each document.
-    result = subprocess.run([sys.executable, '-m', 'app.ingest.source_watch', '--file', str(path), identifier, digest],
-                            capture_output=True, timeout=1800)
+    try:
+        result = subprocess.run([sys.executable, '-m', 'app.ingest.source_watch', '--file', str(path), identifier, digest],
+                                capture_output=True, timeout=1800)
+    except subprocess.TimeoutExpired:
+        raise IndexFailure('timeout') from None
     if result.returncode:
-        raise RuntimeError('Conversia sau indexarea a eșuat. Verifică modelele și formatul documentului.')
+        code = 'memory' if result.returncode in (-9, 137) else 'conversion'
+        for line in result.stderr.decode('utf-8', errors='replace').splitlines():
+            if line.startswith('OFERTARE_INDEX_ERROR='):
+                candidate = line.split('=', 1)[1]
+                if candidate in INDEX_ERRORS:
+                    code = candidate
+        raise IndexFailure(code)
 
 
 def snapshot(folder):
@@ -150,7 +191,7 @@ def scan_source(db, source, index=index_document, remove=remove_document, now=No
             if content_digest(path) != digest:
                 raise ValueError('Fișier modificat în timpul procesării; va fi reluat.')
             db.execute("UPDATE files SET status='indexed',error=NULL,updated=? WHERE source=? AND path=?", (time.time(), sid, rel))
-        except Exception:
+        except Exception as exc:
             if removal_requested(db, sid):
                 purge_source(db, source, remove)
                 return
@@ -159,8 +200,10 @@ def scan_source(db, source, index=index_document, remove=remove_document, now=No
                 continue
             remove(identifier)
             errors += 1
+            code = failure_code(exc)
+            print(json.dumps({'event': 'index_failed', 'document': identifier, 'code': code}), flush=True)
             db.execute("UPDATE files SET status='error',error=?,updated=? WHERE source=? AND path=?",
-                       ('Indexarea nu a reușit. Verifică documentul, modelele locale și serviciul Qdrant.', time.time(), sid, rel))
+                       (INDEX_ERRORS[code], time.time(), sid, rel))
         db.commit()
     if removal_requested(db, sid):
         purge_source(db, source, remove)
@@ -185,9 +228,9 @@ def convert(path, identifier, digest):
     else:
         chunks = chunk_document(convert_pdf(path, ocr=True), meta)
     if not chunks:
-        raise ValueError('Document fără text utilizabil.')
+        raise IndexFailure('empty_document')
     if content_digest(path) != digest:
-        raise ValueError('Document modificat.')
+        raise IndexFailure('changed_document')
     client = qdrant_client()
     try:
         index_chunks(client, BgeM3(), chunks, meta)
@@ -231,6 +274,10 @@ def main():
 
 if __name__ == '__main__':
     if len(sys.argv) == 5 and sys.argv[1] == '--file':
-        convert(Path(sys.argv[2]), sys.argv[3], sys.argv[4])
+        try:
+            convert(Path(sys.argv[2]), sys.argv[3], sys.argv[4])
+        except Exception as exc:
+            print('OFERTARE_INDEX_ERROR=' + failure_code(exc), file=sys.stderr, flush=True)
+            sys.exit(1)
     else:
         main()

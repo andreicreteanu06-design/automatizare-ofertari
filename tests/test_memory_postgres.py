@@ -39,6 +39,11 @@ def test_postgres_restart_ownership_atomicity_and_replay():
         restored = restarted.load(owner, cid)
         assert restored['version'] == 2 and len(restored['messages']) == 4
         assert restored['references'][0]['note'] == 'Human review, not a fact'
+        restarted.correct(owner, cid, req, ['a' * 24], 'Recheck the mass')
+        another_restart = MemoryStore(dsn)
+        assert another_restart.corrections(owner, 'Integration')[0]['note'] == 'Recheck the mass'
+        assert another_restart.corrections('other-owner', 'Integration') == []
+        assert another_restart.corrections(owner, 'Different project') == []
     finally:
         with store.connect() as conn:
             conn.execute('DELETE FROM chat_conversation WHERE id=%s AND owner_hash=%s', (cid, owner))

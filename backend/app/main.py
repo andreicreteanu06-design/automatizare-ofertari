@@ -121,6 +121,7 @@ class ChatIn(BaseModel):
 @app.post("/chat")
 async def chat(body: ChatIn, request: Request, retriever=Depends(get_retriever), llm=Depends(get_llm)):
     messages = []
+    corrections = []
     store = None
     if body.conversation_id:
         if body.version is None or body.request_id is None:
@@ -136,9 +137,10 @@ async def chat(body: ChatIn, request: Request, retriever=Depends(get_retriever),
         if conversation['version'] != body.version:
             raise HTTPException(409, "Conversația s-a modificat. Reîncarcă istoricul.")
         messages = conversation['messages']
+        corrections = await run_in_threadpool(store.corrections, workspace, conversation['project'])
     try:
         async with asyncio.timeout(800):
-            result = await answer_question(body.query, body.k, messages, retriever, llm, body.live_web)
+            result = await answer_question(body.query, body.k, messages, retriever, llm, body.live_web, corrections=corrections)
     except TimeoutError:
         raise HTTPException(504, "Bugetul de timp pentru verificare a expirat. Reîncearcă.") from None
     except httpx.HTTPError as e:

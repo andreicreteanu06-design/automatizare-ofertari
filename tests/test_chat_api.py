@@ -135,3 +135,19 @@ def test_prose_conflicts_and_ambiguous_headers():
     assert contradictions(source_units(fragments, 'masa 3EST000123?'))
     ambiguous = dict(CHUNK, text='| Cod | Masa | Masa |\n| 3EST000123 | 12 kg | 120 kg |')
     assert source_units([ambiguous], 'masa 3EST000123?') == []
+
+
+def test_document_removed_during_generation_is_not_returned(make_client, monkeypatch):
+    from app import sources
+    present = True
+    monkeypatch.setattr(sources, 'current_document', lambda doc, revision: present)
+    client, _, _ = make_client(retrieval=Retrieval([], [], [dict(CHUNK, doc_id='SRC-removed')]))
+    class DeletingLLM:
+        async def complete(self, messages):
+            nonlocal present
+            units = json.loads(messages[-1]['content'])['evidence']
+            present = False
+            return json.dumps({'evidence_ids': [units[0]['id']]})
+    app.dependency_overrides[get_llm] = DeletingLLM
+    result = client.post('/chat', json={'query': 'masa 3EST000123?'}).json()
+    assert result['answer'] == NOT_FOUND and not result['evidence'] and not result['citations']

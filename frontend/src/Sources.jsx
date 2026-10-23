@@ -36,6 +36,14 @@ export default function Sources() {
     try { await mutate('', source); setNotice('Sursă adăugată. Fișierele vor apărea în chat după indexare.'); await refresh(); }
     catch (e) { setError(e.message); } finally { setBusy(false); }
   }
+  async function retry(source) {
+    setBusy(true); setError('');
+    try {
+      const result = await mutate(`/${source.id}/retry`, {});
+      setNotice(`${result.queued} documente pregătite pentru reîncercare. Procesarea continuă pe server.`);
+      await refresh();
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  }
   async function upload(event) {
     const all = Array.from(event.target.files || []);
     const files = all.filter(f => formats.includes(f.name.split('.').pop().toLowerCase()));
@@ -72,6 +80,7 @@ export default function Sources() {
     </Card>
     {progress && <p role="status">{progress}</p>}{notice && <p role="status" className="success">{notice}</p>}<ErrorBox error={error}/>
     {data && !data.worker_active && <div className="warning">Procesarea documentelor este oprită. Folderele și fișierele încărcate rămân vizibile, dar vor fi disponibile în chat după repornirea procesării.</div>}
+    {data?.cleanup_pending > 0 && <p className="note">Curățarea indexului pentru documentele eliminate este în curs. Ele sunt deja excluse din căutările noi; curățarea se finalizează când serviciile de procesare și index sunt disponibile.</p>}
     <section ref={library} className="source-catalog space-y-5" aria-label="Foldere adăugate">
       {data?.sources.length === 0 && <Card title="Biblioteca ta începe aici"><p>Încarcă un folder sau conectează o sursă pentru actualizare automată.</p></Card>}
       {data?.sources.map(source => {
@@ -79,6 +88,7 @@ export default function Sources() {
         return <Card key={source.id} title={source.name} subtitle={`${({ local: 'Folder monitorizat', upload: 'Copie încărcată', drive: 'Google Drive · Workspace CLI' })[source.kind]} · ${labels[source.status] || source.status}`}
           action={<RemoveSource source={source} disabled={busy} onError={setError} onRemoved={async () => { setNotice('Folder eliminat din bibliotecă și din căutările noi.'); await refresh(); }} />}>
           <p>{total} fișiere în bibliotecă · {source.counts.indexed || 0} documente indexate · ultima verificare: {source.checked ? new Date(source.checked * 1000).toLocaleString('ro-RO') : 'în așteptare'}</p><ErrorBox error={source.error}/>
+          {(source.counts.error > 0 || source.status === 'error') && <Button secondary disabled={busy} onClick={() => retry(source)}><RefreshCw size={16}/>Reîncearcă indexarea</Button>}
           {!source.files.length && <p>Folder adăugat. Fișierele vor apărea aici pe măsură ce sunt încărcate sau descoperite la prima verificare.</p>}
           {!!source.files.length && <details className="advanced-options" open><summary>Vezi documentele și starea lor</summary><p>Ultimele 50 de documente. Fișierele modificate se reprocesează; cele șterse sunt retrase din căutările noi.</p>{source.files.map(file => <div className="source-file" key={file.path}><div className="source-file-heading"><strong>{file.path}</strong><RemoveSource source={source} file={file} disabled={busy} onError={setError} onRemoved={async () => { setNotice('Document eliminat. Folderul și celelalte documente sunt păstrate.'); await refresh(); }}/></div><span>{labels[file.status] || file.status}</span><small>{file.doc_id}</small>{file.error && <p>{file.error}</p>}</div>)}</details>}
         </Card>;

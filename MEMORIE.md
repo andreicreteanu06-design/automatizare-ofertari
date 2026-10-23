@@ -4,7 +4,7 @@
 
 Conversațiile, întrebările, răspunsurile cu dovezi și referințele comentate sunt stocate în Postgres. Restartul backend-ului nu le șterge. Datele depind de volumul `pgdata`; nu folosi `docker compose down -v` dacă vrei să le păstrezi. Un backup al codului pe GitHub nu este un backup al bazei de date.
 
-UI-ul restaurează cea mai recentă conversație și permite alegerea alteia. Lista are maximum 100 conversații, istoricul livrat are ultimele 100 tururi, iar rezolvarea referinței articolului folosește ultimele 12 mesaje. Tururile mai vechi rămân în DB, dar nu sunt încă paginate în UI. O conversație nouă nu preia contextul alteia, chiar dacă au același nume de proiect.
+UI-ul restaurează cea mai recentă conversație și permite alegerea alteia. Lista are maximum 100 conversații, istoricul livrat are ultimele 100 tururi, iar rezolvarea referinței articolului folosește ultimele 12 mesaje. Tururile mai vechi rămân în DB, dar nu sunt încă paginate în UI. O conversație nouă nu preia istoricul alteia. Corecțiile explicite sunt însă consultate în același proiect și spațiu de utilizator, conform [INDEXING.md](INDEXING.md).
 
 În modul local (AUTH_ENABLED=false), cookie-ul HttpOnly identifică spațiul browserului. În modul autentificat, identitatea Google Workspace sau Microsoft 365 separă conversațiile și permite accesul din alt browser. Conturile celor doi furnizori nu sunt unite automat, iar conversațiile locale vechi nu sunt migrate automat. Biblioteca de documente rămâne comună. Configurare și limite: [BACKEND_OPERATIONS.md](BACKEND_OPERATIONS.md).
 
@@ -27,13 +27,13 @@ Referințele salvate conțin o copie a dovezii și nota utilizatorului. Sunt sep
 - Dicționarul de proprietăți și detectorul de conflicte au acoperire limitată. Lipsa unui conflict detectat nu dovedește absența contradicțiilor în întreaga colecție.
 - SHA-256-ul PDF-ului este o amprentă a conținutului, nu revizia declarată de producător. Indexările vechi nu au această amprentă; reindexează-le. Intervalele de pagini ale tabelelor nu identifică precis celula pe pagină.
 - Tabelele consecutive se îmbină numai când antetele coincid. Continuările fără antet nu sunt presupuse compatibile.
-- OCR-ul este disponibil explicit prin `python -m app.ingest.pdf ... --ocr`; watcher-ul nu îl activează automat. PDF-urile fără conținut extras sunt respinse pentru revizuire.
+- OCR-ul este disponibil prin `python -m app.ingest.pdf ... --ocr`; source-watch îl activează pentru documentele încărcate/monitorizate, cu Tesseract local în română și engleză. PDF-urile fără text extras sunt respinse pentru revizuire. Diagnostic și reluare: [INDEXING.md](INDEXING.md).
 - Modelul nu se auto-antrenează pe conversații. Răspunsurile istorice și notele nu înlocuiesc documentele.
 
 ## Actualizare Docker și baze existente
 
 ```bash
-docker compose --profile ui --profile mail up -d --build
+docker compose --profile ui up -d --build backend source-watch frontend
 ```
 
 Schema `backend/db/002_memory.sql` se aplică la inițializarea unei baze noi. Pentru volume existente, backend-ul aplică idempotent aceeași schemă la prima accesare a memoriei, sub un lock tranzacțional. Utilizatorul DB trebuie să poată crea tabele și indexuri; nu sunt șterse date existente. Dacă DB nu este disponibilă, API-ul returnează 503, fără a pretinde că mesajul a fost salvat.

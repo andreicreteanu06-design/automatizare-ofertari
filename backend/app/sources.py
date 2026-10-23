@@ -90,7 +90,8 @@ def listing():
             item['files'] = [dict(f) for f in db.execute(f'SELECT path,doc_id,status,updated,error FROM files WHERE {visible} ORDER BY updated DESC LIMIT 50', (source['id'],))]
             rows.append(item)
         worker = db.execute('SELECT heartbeat FROM worker WHERE id=1').fetchone()
-        return {'sources': rows, 'worker_active': bool(worker and time.time() - worker[0] < 120), 'formats': sorted(EXTENSIONS), 'poll_seconds': 30, 'limits': {'file_bytes': MAX_BYTES, 'folder_bytes': MAX_FOLDER_BYTES, 'files': MAX_FILES}}
+        cleanup_pending = db.execute('SELECT count(*) FROM file_removals WHERE cleaned=0').fetchone()[0] + db.execute('SELECT count(*) FROM source_removals').fetchone()[0]
+        return {'sources': rows, 'cleanup_pending': cleanup_pending, 'worker_active': bool(worker and time.time() - worker[0] < 120), 'formats': sorted(EXTENSIONS), 'poll_seconds': 30, 'limits': {'file_bytes': MAX_BYTES, 'folder_bytes': MAX_FOLDER_BYTES, 'files': MAX_FILES}}
     finally:
         db.close()
 
@@ -121,6 +122,21 @@ def removal_requested(db, sid):
 
 def file_removal_requested(db, sid, path):
     return bool(db.execute('SELECT 1 FROM file_removals WHERE source=? AND path=?', (sid, path)).fetchone())
+
+
+@router.post('/{sid}/retry')
+def retry_source(sid: UUID, request: Request):
+    mutation(request)
+    db = connect()
+    try:
+        if removal_requested(db, str(sid)) or not db.execute('SELECT 1 FROM sources WHERE id=?', (str(sid),)).fetchone():
+            raise HTTPException(404, 'Sursă inexistentă.')
+        result = db.execute("UPDATE files SET status='pending',updated=0,error=NULL WHERE source=? AND status='error' AND NOT EXISTS (SELECT 1 FROM file_removals r WHERE r.source=files.source AND r.path=files.path)", (str(sid),))
+        db.execute("UPDATE sources SET status='pending',error=NULL WHERE id=?", (str(sid),))
+        db.commit()
+        return {'ok': True, 'queued': result.rowcount}
+    finally:
+        db.close()
 
 
 @router.delete('/{sid}/files/{identifier}')

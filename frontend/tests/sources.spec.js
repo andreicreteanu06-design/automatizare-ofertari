@@ -132,3 +132,19 @@ test('individual document removal keeps the source and its other document', asyn
   await expect(page.getByRole('button', { name: 'Elimină documentul preturi.pdf', exact: true })).toBeVisible();
   expect(calls).toBe(1);
 });
+
+test('failed documents can be retried without reuploading or restoring removed files', async ({ page }) => {
+  let retried = false;
+  await page.route('**/api/sources', r => r.fulfill({ json: { cleanup_pending: 1, worker_active: true, sources: [{ id: 'source-1', name: 'Test', kind: 'upload', status: retried ? 'pending' : 'attention', counts: retried ? { pending: 1 } : { error: 1 }, files: [{ path: 'scan.pdf', doc_id: 'SRC-test', status: retried ? 'pending' : 'error', error: retried ? null : 'OCR-ul local nu poate porni.' }] }] } }));
+  await page.route('**/api/sources/source-1/retry', r => {
+    expect(r.request().method()).toBe('POST'); expect(r.request().headers()['x-source-action']).toBe('1');
+    retried = true;
+    return r.fulfill({ json: { ok: true, queued: 1 } });
+  });
+  await page.goto('/#sources');
+  await expect(page.getByText('Curățarea indexului', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Reîncearcă indexarea', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('1 documente pregătite pentru reîncercare');
+  await expect(page.getByText('OCR-ul local nu poate porni.', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Test', exact: true })).toBeVisible();
+});

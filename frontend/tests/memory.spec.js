@@ -55,3 +55,41 @@ test('persistent conversation survives reload and submits version plus idempoten
   await page.getByRole('navigation', { name: 'Conversații salvate' }).getByRole('button', { name: /Masa PART123/ }).click();
   await expect(page.locator('.answer-text')).toHaveCount(2);
 });
+
+test('explicit correction is saved against the answer and consulted on repeat', async ({ page }) => {
+  const cid = '11111111-1111-4111-8111-111111111111';
+  let row = null, corrected = false, requests = 0, target;
+  await page.route('**/api/conversations', r => {
+    if (r.request().method() === 'GET') return r.fulfill({ json: row ? [row] : [] });
+    row = { id: cid, project: 'General', title: 'Masa PART123?', version: 0, messages: [], references: [] };
+    return r.fulfill({ json: row });
+  });
+  await page.route('**/api/conversations/' + cid, r => r.fulfill({ json: row }));
+  await page.route('**/api/conversations/' + cid + '/corrections', r => {
+    expect(r.request().postDataJSON()).toEqual({ request_id: target, evidence_ids: ['a'.repeat(24)], note: 'Verifică masa: pasajul ales este greșit.' });
+    corrected = true;
+    return r.fulfill({ json: { ok: true, id: 'review-1' } });
+  });
+  await page.route('**/api/chat', r => {
+    const p = r.request().postDataJSON(); requests++;
+    if (requests === 1) target = p.request_id;
+    const data = { answer: corrected ? 'Nu am găsit această informație în documentele interne.' : 'Masa: 12 kg [FT:1]', evidence: corrected ? [] : [{ id: 'a'.repeat(24), doc_id: 'FT', page: 1, page_end: 1, quote: 'Masa: 12 kg' }], citations: [], request_id: p.request_id, version: ++row.version, corrections_applied: corrected ? ['review-1'] : [] };
+    row.messages.push({ role: 'user', text: p.query }, { role: 'assistant', data });
+    return r.fulfill({ json: data });
+  });
+  await page.goto('/#chat');
+  await page.getByLabel('Întrebare tehnică').fill('Masa PART123?');
+  await page.getByRole('button', { name: 'Trimite', exact: true }).click();
+  await page.getByRole('button', { name: 'Corectează răspunsul', exact: true }).click();
+  await page.getByLabel('Ce trebuie corectat?').fill('Verifică masa: pasajul ales este greșit.');
+  await page.locator('.chat-correction').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath('correction-form.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Salvează corecția', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Corecție salvată' })).toBeVisible();
+  await page.reload();
+  await page.getByLabel('Întrebare tehnică').fill('Masa PART123?');
+  await page.getByRole('button', { name: 'Trimite', exact: true }).click();
+  await expect(page.locator('.answer-text').last()).not.toContainText('12 kg');
+  await expect(page.getByText('A fost consultată o corecție', { exact: false })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('correction-applied.png'), fullPage: true });
+});
