@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import sources
-from app.ingest.source_watch import scan_source
+from app.ingest.source_watch import scan_source, purge_source
 from drive_sync.sync import sync
 from research_gateway.egress_guard import EgressGuard
 
@@ -41,6 +41,117 @@ def test_upload_binary_nested_and_csrf(env):
     assert client.post(f'/sources/{sid}/upload', params={'path': 'script.exe'}, content=b'x').status_code == 415
     assert client.post(f'/sources/{sid}/upload', params={'path': 'empty.txt'}, content=b'').status_code == 422
     assert not list((tmp / 'uploads').rglob('*.part'))
+
+
+def test_uploaded_files_are_visible_before_worker_starts(env):
+    client, tmp = env
+    sid = client.post('/sources', json={'kind': 'upload', 'name': 'Test ofertari'}).json()['id']
+    assert client.post(f'/sources/{sid}/upload', params={'path': 'Test ofertari/certificat.pdf'}, content=b'%PDF-test').status_code == 200
+    data = client.get('/sources').json()
+    assert data['worker_active'] is False
+    source, = data['sources']
+    assert source['counts'] == {'pending': 1}
+    assert source['files'][0]['path'] == 'Test ofertari/certificat.pdf'
+    assert source['files'][0]['doc_id'] == sources.doc_id(sid, 'Test ofertari/certificat.pdf')
+    assert not sources.current_document(source['files'][0]['doc_id'], 'unknown')
+
+
+def test_remove_uploaded_source_withdraws_before_cleanup_and_preserves_other_files(env):
+    client, tmp = env
+    sid = client.post('/sources', json={'kind': 'upload', 'name': 'Test'}).json()['id']
+    client.post(f'/sources/{sid}/upload', params={'path': 'file.txt'}, content=b'PART123 5 kg')
+    path = tmp / 'uploads' / sid / 'file.txt'
+    os.utime(path, (time.time() - 30,) * 2)
+    original = tmp / 'local' / 'Technical' / 'original.txt'
+    original.write_text('Original')
+    other = tmp / 'uploads' / 'another-folder'
+    other.mkdir()
+    (other / 'keep.txt').write_text('Keep')
+    db = sources.connect()
+    source = db.execute('SELECT * FROM sources WHERE id=?', (sid,)).fetchone()
+    db.execute('INSERT INTO worker VALUES(1,?)', (time.time(),)); db.commit()
+    indexed, removed = [], []
+    scan_source(db, source, lambda p, i, d: indexed.append((i, d)), removed.append)
+    assert sources.current_document(*indexed[0])
+    assert client.delete(f'/sources/{sid}', headers={'X-Source-Action': ''}).status_code == 403
+    assert client.delete(f'/sources/{sid}', headers={'Sec-Fetch-Site': 'cross-site'}).status_code == 403
+    assert client.delete(f'/sources/{sid}').json()['status'] == 'removed'
+    assert client.get('/sources').json()['sources'] == []
+    assert not sources.current_document(*indexed[0])
+    assert client.post(f'/sources/{sid}/upload', params={'path': 'new.txt'}, content=b'new').status_code == 404
+    assert client.delete(f'/sources/{sid}').status_code == 200  # retries are idempotent
+    scan_source(db, source, remove=removed.append)
+    assert not path.parent.exists()
+    assert original.read_text() == 'Original'
+    assert (other / 'keep.txt').read_text() == 'Keep'
+    assert not db.execute('SELECT 1 FROM files WHERE source=?', (sid,)).fetchone()
+    assert not sources.removal_requested(db, sid)
+    assert client.delete(f'/sources/{sid}').status_code == 404
+    db.close()
+
+
+def test_remove_during_indexing_never_reactivates_document_or_touches_original(env):
+    client, tmp = env
+    sid = client.post('/sources', json={'kind': 'local', 'name': 'Technical', 'path': 'Technical'}).json()['id']
+    path = tmp / 'local' / 'Technical' / 'file.txt'
+    path.write_text('PART123 5 kg'); os.utime(path, (time.time() - 30,) * 2)
+    db = sources.connect()
+    source = db.execute('SELECT * FROM sources WHERE id=?', (sid,)).fetchone()
+    removed = []
+    def index(*args):
+        assert client.delete(f'/sources/{sid}').status_code == 200
+    scan_source(db, source, index, removed.append)
+    assert path.read_text() == 'PART123 5 kg'
+    assert sources.doc_id(sid, 'file.txt') in removed
+    assert client.get('/sources').json()['sources'] == []
+    assert not db.execute('SELECT 1 FROM files').fetchone()
+    db.close()
+
+
+def test_failed_cleanup_keeps_source_withdrawn_and_retries(env):
+    client, tmp = env
+    sid = client.post('/sources', json={'kind': 'upload', 'name': 'Test'}).json()['id']
+    client.post(f'/sources/{sid}/upload', params={'path': 'file.txt'}, content=b'PART123')
+    client.delete(f'/sources/{sid}')
+    db = sources.connect()
+    source = db.execute('SELECT * FROM sources WHERE id=?', (sid,)).fetchone()
+    def fail(identifier):
+        raise RuntimeError('Qdrant unavailable')
+    with pytest.raises(RuntimeError):
+        purge_source(db, source, fail)
+    assert client.get('/sources').json()['sources'] == []
+    assert (tmp / 'uploads' / sid / 'file.txt').exists()
+    assert sources.removal_requested(db, sid)
+    purge_source(db, source, lambda _: None)
+    assert not (tmp / 'uploads' / sid).exists()
+    db.close()
+
+
+def test_removing_drive_stops_sync_and_preserves_mirror(env):
+    client, tmp = env
+    sid = client.post('/sources', json={'kind': 'drive', 'name': 'Drive', 'path': 'folder12345678'}).json()['id']
+    mirror = tmp / 'drive' / sid
+    mirror.mkdir(); (mirror / 'file.pdf').write_bytes(b'%PDF-test')
+    assert client.delete(f'/sources/{sid}').status_code == 200
+    assert not (tmp / 'config' / (sid + '.json')).exists()
+    db = sources.connect()
+    purge_source(db, db.execute('SELECT * FROM sources WHERE id=?', (sid,)).fetchone(), lambda _: None)
+    assert (mirror / 'file.pdf').exists()
+    db.close()
+
+
+def test_removal_refuses_symlink_upload_escape(env):
+    client, tmp = env
+    sid = client.post('/sources', json={'kind': 'upload', 'name': 'Test'}).json()['id']
+    (tmp / 'uploads' / sid).rmdir()
+    secret = tmp / 'secret'; secret.mkdir(); (secret / 'keep.txt').write_text('Keep')
+    (tmp / 'uploads' / sid).symlink_to(secret, target_is_directory=True)
+    client.delete(f'/sources/{sid}')
+    db = sources.connect()
+    with pytest.raises(ValueError):
+        purge_source(db, db.execute('SELECT * FROM sources WHERE id=?', (sid,)).fetchone(), lambda _: None)
+    assert (secret / 'keep.txt').read_text() == 'Keep'
+    db.close()
 
 
 def test_configured_upload_limits_and_atomic_overwrite(env, monkeypatch):

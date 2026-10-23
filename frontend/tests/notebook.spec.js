@@ -39,3 +39,32 @@ test('notebook shows indexed folders, citation passages, and explicit live mode'
   expect(composer.x + composer.width).toBeLessThanOrEqual(frame.x + frame.width);
   await page.screenshot({ path: 'test-results/notebook-mobile.png', fullPage: true });
 });
+
+test('folder can be removed from the technical chat without leaving it', async ({ page }) => {
+  let removed = false;
+  await page.route('**/api/conversations', r => r.fulfill({ json: [] }));
+  await page.route('**/api/emails/accounts', r => r.fulfill({ json: [] }));
+  await page.route('**/api/sources', r => r.fulfill({ json: { worker_active: true, sources: removed ? [] : [{ id: 'source-1', name: 'Test ofertari', kind: 'upload', status: 'pending', counts: { pending: 1 }, files: [{ path: 'certificat.pdf', status: 'pending' }] }] } }));
+  await page.route('**/api/sources/source-1', r => { expect(r.request().method()).toBe('DELETE'); removed = true; return r.fulfill({ json: { ok: true, status: 'removed' } }); });
+  await page.goto('/#chat');
+  await expect(page.locator('.notebook-sources')).toContainText('certificat.pdf');
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Elimină folderul Test ofertari', exact: true }).click();
+  await expect(page.locator('.notebook-sources')).not.toContainText('certificat.pdf');
+  await expect(page).toHaveURL(/#chat$/);
+});
+
+test('service banner recovers automatically after the document worker starts', async ({ page }) => {
+  await page.clock.install();
+  let active = false;
+  await page.route('**/api/diagnostics', r => r.fulfill({ json: { ok: active, services: [{ id: 'source_worker', label: 'Procesarea documentelor', status: active ? 'ok' : 'unavailable', required: false }] } }));
+  await page.route('**/api/sources', r => r.fulfill({ json: { worker_active: active, sources: [] } }));
+  await page.route('**/api/conversations', r => r.fulfill({ json: [] }));
+  await page.route('**/api/emails/accounts', r => r.fulfill({ json: [] }));
+  await page.goto('/#chat');
+  await expect(page.locator('.service-status summary')).toHaveText('Unele servicii necesită atenție');
+  active = true;
+  await page.clock.runFor(30000);
+  await expect(page.locator('.service-status summary')).toHaveText('Servicii disponibile');
+  await expect(page.locator('.notebook-sources .warning')).toHaveCount(0);
+});

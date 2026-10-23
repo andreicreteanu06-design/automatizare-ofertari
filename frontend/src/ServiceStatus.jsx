@@ -11,7 +11,7 @@ export default function ServiceStatus() {
     catch { setResult(null); setError('Backend-ul nu poate fi contactat. Verifică pornirea serviciilor Docker.'); }
     finally { setBusy(false); }
   }
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { refresh(); const timer = setInterval(refresh, 15000); return () => clearInterval(timer); }, []);
   return <details className="card service-status"><summary>
     {busy ? 'Verific serviciile…' : error ? 'Server indisponibil' : result?.ok ? 'Servicii disponibile' : 'Unele servicii necesită atenție'}
   </summary><p>{error || result?.note}</p>

@@ -1,13 +1,14 @@
 """Read-only recursive sources -> current RAG evidence. Never moves client files."""
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 
-from app.sources import EXTENSIONS, MAX_BYTES, MAX_FILES, connect, doc_id, root, safe_path, content_digest
+from app.sources import EXTENSIONS, MAX_BYTES, MAX_FILES, connect, doc_id, root, safe_path, content_digest, removal_requested
 
 
 def remove_document(identifier):
@@ -51,9 +52,33 @@ def snapshot(folder):
     return result
 
 
+def purge_source(db, source, remove=remove_document):
+    """Remove only our index and UUID-owned upload copy, never client/Drive originals."""
+    sid = source['id']
+    for row in db.execute('SELECT doc_id FROM files WHERE source=?', (sid,)).fetchall():
+        remove(row['doc_id'])
+    if source['kind'] == 'upload':
+        from uuid import UUID
+        if str(UUID(sid)) != source['path']:
+            raise ValueError('Director de încărcare invalid.')
+        base = root('upload')
+        folder = safe_path(base, sid)
+        if folder.resolve() == base.resolve() or not folder.resolve().is_relative_to(base.resolve()):
+            raise ValueError('Director în afara încărcărilor.')
+        if folder.exists():
+            shutil.rmtree(folder)
+    db.execute('DELETE FROM files WHERE source=?', (sid,))
+    db.execute('DELETE FROM sources WHERE id=?', (sid,))
+    db.execute('DELETE FROM source_removals WHERE source=?', (sid,))
+    db.commit()
+
+
 def scan_source(db, source, index=index_document, remove=remove_document, now=None):
     now = now or time.time()
     sid = source['id']
+    if removal_requested(db, sid):
+        purge_source(db, source, remove)
+        return
     folder = safe_path(root(source['kind']), source['path'] if source['kind'] != 'drive' else sid)
     if not folder.is_dir():
         raise ValueError('Folderul nu este disponibil. Verifică montarea sau sincronizarea Drive.')
@@ -66,6 +91,9 @@ def scan_source(db, source, index=index_document, remove=remove_document, now=No
     errors = 0
     pending = False
     for rel, (path, stat) in files.items():
+        if removal_requested(db, sid):
+            purge_source(db, source, remove)
+            return
         old = previous.get(rel)
         identifier = doc_id(sid, rel)
         if stat.st_size > MAX_BYTES:
@@ -92,15 +120,24 @@ def scan_source(db, source, index=index_document, remove=remove_document, now=No
         db.commit()
         try:
             index(path, identifier, digest)
+            if removal_requested(db, sid):
+                purge_source(db, source, remove)
+                return
             if content_digest(path) != digest:
                 raise ValueError('Fișier modificat în timpul procesării; va fi reluat.')
             db.execute("UPDATE files SET status='indexed',error=NULL,updated=? WHERE source=? AND path=?", (time.time(), sid, rel))
         except Exception:
+            if removal_requested(db, sid):
+                purge_source(db, source, remove)
+                return
             remove(identifier)
             errors += 1
             db.execute("UPDATE files SET status='error',error=?,updated=? WHERE source=? AND path=?",
                        ('Indexarea nu a reușit. Verifică documentul, modelele locale și serviciul Qdrant.', time.time(), sid, rel))
         db.commit()
+    if removal_requested(db, sid):
+        purge_source(db, source, remove)
+        return
     for rel, old in previous.items():
         if rel not in files and old['status'] != 'removed':
             remove(old['doc_id'])
