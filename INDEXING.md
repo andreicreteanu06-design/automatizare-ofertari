@@ -28,6 +28,15 @@ nu garantează compatibilitatea lor: conversia reală este testul final. Așteap
 În Documentele mele există și „Reîncearcă indexarea”, după remedierea cauzei
 afișate pentru fiecare fișier. Nu este necesară încărcarea unui duplicat.
 
+Imaginea instalează PyTorch și TorchVision ca pereche CPU fixată în
+`backend/constraints-cpu.txt`, înaintea celorlalte biblioteci. Aceleași constrângeri
+se aplică și instalării `requirements.txt`. Astfel TorchVision nu este înlocuit cu
+o roată CUDA care nu poate încărca operatorii lângă PyTorch CPU. Build-ul verifică
+importurile FlagEmbedding/Docling și execută un operator TorchVision pe CPU,
+offline și fără modele sau documente. Erorile secundare `TrainingArguments` sau
+`BloomPreTrainedModel` pot ascunde cauza `operator torchvision::nms does not exist`.
+După actualizare trebuie reconstruită imaginea, apoi recreate backend/source-watch.
+
 ```bash
 docker compose logs --tail=60 source-watch
 docker compose ps
@@ -42,6 +51,9 @@ necesară, fără textul documentelor sau traceback-ul brut. `memory` poate îns
 
 Serviciile de procesare au `HF_HUB_OFFLINE=1`. Descărcarea se face separat prin
 `model-fetch`, care nu primește documentele clientului:
+
+Comanda implicită a serviciului folosește API-ul Python Hugging Face, inclusiv în
+versiunile care nu mai furnizează executabilul `huggingface-cli`.
 
 ```bash
 docker compose --profile setup run --rm model-fetch python -c "from huggingface_hub import snapshot_download; import subprocess; snapshot_download('BAAI/bge-m3', ignore_patterns=['onnx/*']); subprocess.run(['docling-tools', 'models', 'download', '-o', '/models/docling'], check=True)"
